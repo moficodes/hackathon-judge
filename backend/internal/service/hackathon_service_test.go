@@ -18,8 +18,8 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 		ID:        "e1",
 		ProjectID: "p1",
 		Criteria: []domain.CriteriaScore{
-			{Name: "Technology", Score: 30},
-			{Name: "Design", Score: 20},
+			{Name: "Technology", Score: 4}, // Weight is 2 from mock data -> 8
+			{Name: "Design", Score: 5},     // Weight is 1 from mock data -> 5
 		},
 	}
 
@@ -29,14 +29,14 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	projects, err := svc.ListProjectsByHackathon("1")
 	assert.NoError(t, err)
 	assert.Len(t, projects, 1)
-	assert.Equal(t, 80.0, projects[0].Score)
+	assert.Equal(t, 13.0, projects[0].Score) // (4*2) + (5*1) = 13
 
 	eval2 := domain.Evaluation{
 		ID:        "e2",
 		ProjectID: "p1",
 		Criteria: []domain.CriteriaScore{
-			{Name: "Technology", Score: 40},
-			{Name: "Design", Score: 10},
+			{Name: "Technology", Score: 2}, // Weight 2 -> 4
+			{Name: "Design", Score: 3},     // Weight 1 -> 3
 		},
 	}
 
@@ -46,5 +46,5 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	projects, err = svc.ListProjectsByHackathon("1")
 	assert.NoError(t, err)
 	assert.Len(t, projects, 1)
-	assert.Equal(t, 85.0, projects[0].Score)
+	assert.Equal(t, 10.0, projects[0].Score) // (13 + 7) / 2 = 10
 }
