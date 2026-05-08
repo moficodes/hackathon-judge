@@ -17,4 +17,5 @@ type Project struct {
 
 type ProjectRepository interface {
 	GetByHackathonID(hackathonID string) ([]Project, error)
+	UpdateScore(projectID string, score float64) error
 }

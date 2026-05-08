@@ -2,10 +2,13 @@ package repository
 
 import (
 	"errors"
+	"sync"
+
 	"github.com/moficodes/hackathon-judge/backend/internal/domain"
 )
 
 type memoryRepo struct {
+	mu          sync.RWMutex
 	hackathons  []domain.Hackathon
 	projects    []domain.Project
 	evaluations []domain.Evaluation
@@ -24,10 +27,14 @@ func NewMemoryRepo() *memoryRepo {
 }
 
 func (r *memoryRepo) GetAll() ([]domain.Hackathon, error) {
-	return r.hackathons, nil
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]domain.Hackathon(nil), r.hackathons...), nil
 }
 
 func (r *memoryRepo) GetByID(id string) (domain.Hackathon, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	for _, h := range r.hackathons {
 		if h.ID == id {
 			return h, nil
@@ -37,6 +44,8 @@ func (r *memoryRepo) GetByID(id string) (domain.Hackathon, error) {
 }
 
 func (r *memoryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var result []domain.Project
 	for _, p := range r.projects {
 		if p.HackathonID == hackathonID {
@@ -47,32 +56,15 @@ func (r *memoryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, err
 }
 
 func (r *memoryRepo) Save(eval domain.Evaluation) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.evaluations = append(r.evaluations, eval)
-
-	// Recalculate average project score
-	var total float64
-	var count float64
-	for _, e := range r.evaluations {
-		if e.ProjectID == eval.ProjectID {
-			total += e.TotalScore
-			count++
-		}
-	}
-
-	if count > 0 {
-		avg := total / count
-		for i, p := range r.projects {
-			if p.ID == eval.ProjectID {
-				r.projects[i].Score = avg
-				break
-			}
-		}
-	}
-
 	return nil
 }
 
 func (r *memoryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var result []domain.Evaluation
 	for _, e := range r.evaluations {
 		if e.ProjectID == projectID {
@@ -80,4 +72,16 @@ func (r *memoryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, erro
 		}
 	}
 	return result, nil
+}
+
+func (r *memoryRepo) UpdateScore(projectID string, score float64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, p := range r.projects {
+		if p.ID == projectID {
+			r.projects[i].Score = score
+			return nil
+		}
+	}
+	return errors.New("project not found")
 }
