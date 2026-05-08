@@ -2,21 +2,21 @@ package handler
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 	"github.com/gin-gonic/gin"
 	"github.com/moficodes/hackathon-judge/backend/internal/domain"
 	"github.com/moficodes/hackathon-judge/backend/internal/repository"
 	"github.com/moficodes/hackathon-judge/backend/internal/service"
 	"github.com/stretchr/testify/assert"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 )
 
 func TestGetHackathons(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	repo := repository.NewMemoryRepo()
-	svc := service.NewHackathonService(repo, repo)
+	svc := service.NewHackathonService(repo, repo, repo)
 	h := NewHackathonHandler(svc)
 	h.RegisterRoutes(r)
 
@@ -36,7 +36,7 @@ func TestGetProjects(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	repo := repository.NewMemoryRepo()
-	svc := service.NewHackathonService(repo, repo)
+	svc := service.NewHackathonService(repo, repo, repo)
 	h := NewHackathonHandler(svc)
 	h.RegisterRoutes(r)
 

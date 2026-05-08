@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"net/http"
 	"github.com/gin-gonic/gin"
 	"github.com/moficodes/hackathon-judge/backend/internal/service"
+	"net/http"
 )
 
 type HackathonHandler struct {
