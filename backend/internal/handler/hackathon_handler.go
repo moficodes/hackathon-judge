@@ -19,6 +19,7 @@ func (h *HackathonHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		api.GET("/hackathons", h.GetHackathons)
 		api.GET("/hackathons/:id/projects", h.GetProjects)
+		api.GET("/projects/:id/evaluations", h.GetEvaluations)
 	}
 }
 
@@ -34,6 +35,16 @@ func (h *HackathonHandler) GetHackathons(c *gin.Context) {
 func (h *HackathonHandler) GetProjects(c *gin.Context) {
 	id := c.Param("id")
 	res, err := h.svc.ListProjectsByHackathon(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+func (h *HackathonHandler) GetEvaluations(c *gin.Context) {
+	id := c.Param("id")
+	res, err := h.svc.ListEvaluationsByProject(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
