@@ -6,6 +6,7 @@ type HackathonService interface {
 	ListHackathons() ([]domain.Hackathon, error)
 	ListProjectsByHackathon(id string) ([]domain.Project, error)
 	AddEvaluation(eval domain.Evaluation) error
+	ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error)
 }
 
 type hackathonService struct {
@@ -24,6 +25,10 @@ func (s *hackathonService) ListHackathons() ([]domain.Hackathon, error) {
 
 func (s *hackathonService) ListProjectsByHackathon(id string) ([]domain.Project, error) {
 	return s.projectRepo.GetByHackathonID(id)
+}
+
+func (s *hackathonService) ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error) {
+	return s.evalRepo.GetByProjectID(projectID)
 }
 
 func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
