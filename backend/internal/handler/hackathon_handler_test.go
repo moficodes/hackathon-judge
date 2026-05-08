@@ -21,11 +21,34 @@ func TestGetHackathons(t *testing.T) {
 	h.RegisterRoutes(r)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/hackathons", nil)
+	req, err := http.NewRequest("GET", "/api/hackathons", nil)
+	assert.NoError(t, err)
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var res []domain.Hackathon
-	json.Unmarshal(w.Body.Bytes(), &res)
+	err = json.Unmarshal(w.Body.Bytes(), &res)
+	assert.NoError(t, err)
 	assert.Greater(t, len(res), 0)
+}
+
+func TestGetProjects(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo)
+	h := NewHackathonHandler(svc)
+	h.RegisterRoutes(r)
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/api/hackathons/1/projects", nil)
+	assert.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var res []domain.Project
+	err = json.Unmarshal(w.Body.Bytes(), &res)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(res))
+	assert.Equal(t, "p1", res[0].ID)
 }
