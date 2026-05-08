@@ -6,9 +6,13 @@ import (
 	"github.com/moficodes/hackathon-judge/backend/internal/handler"
 	"github.com/moficodes/hackathon-judge/backend/internal/repository"
 	"github.com/moficodes/hackathon-judge/backend/internal/service"
+	"github.com/moficodes/hackathon-judge/backend/pkg/logger"
 )
 
+const defaultPort = ":8080"
+
 func main() {
+	logger.Init()
 	r := gin.Default()
 
 	repo := repository.NewMemoryRepo()
@@ -17,8 +21,8 @@ func main() {
 
 	h.RegisterRoutes(r)
 
-	log.Println("Server starting on :8080")
-	if err := r.Run(":8080"); err != nil {
+	log.Printf("Server starting on %s\n", defaultPort)
+	if err := r.Run(defaultPort); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -7,10 +7,10 @@ import (
 )
 
 type HackathonHandler struct {
-	svc *service.HackathonService
+	svc service.HackathonService
 }
 
-func NewHackathonHandler(svc *service.HackathonService) *HackathonHandler {
+func NewHackathonHandler(svc service.HackathonService) *HackathonHandler {
 	return &HackathonHandler{svc: svc}
 }
 
