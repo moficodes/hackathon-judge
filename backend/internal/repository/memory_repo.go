@@ -94,3 +94,14 @@ func (r *memoryRepo) UpdateScore(projectID string, score float64) error {
 	}
 	return errors.New("project not found")
 }
+
+func (r *memoryRepo) GetProjectByID(id string) (domain.Project, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.projects {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return domain.Project{}, errors.New("project not found")
+}

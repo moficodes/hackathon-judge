@@ -15,9 +15,12 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 
 	// memoryRepo initializes a project with ID "p1" under hackathon "1"
 	eval1 := domain.Evaluation{
-		ID:         "e1",
-		ProjectID:  "p1",
-		TotalScore: 80.0,
+		ID:        "e1",
+		ProjectID: "p1",
+		Criteria: []domain.CriteriaScore{
+			{Name: "Technology", Score: 30},
+			{Name: "Design", Score: 20},
+		},
 	}
 
 	err := svc.AddEvaluation(eval1)
@@ -29,9 +32,12 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	assert.Equal(t, 80.0, projects[0].Score)
 
 	eval2 := domain.Evaluation{
-		ID:         "e2",
-		ProjectID:  "p1",
-		TotalScore: 90.0,
+		ID:        "e2",
+		ProjectID: "p1",
+		Criteria: []domain.CriteriaScore{
+			{Name: "Technology", Score: 40},
+			{Name: "Design", Score: 10},
+		},
 	}
 
 	err = svc.AddEvaluation(eval2)

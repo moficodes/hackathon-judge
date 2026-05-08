@@ -32,6 +32,32 @@ func (s *hackathonService) ListEvaluationsByProject(projectID string) ([]domain.
 }
 
 func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
+	// Fetch Project to get HackathonID
+	project, err := s.projectRepo.GetProjectByID(eval.ProjectID)
+	if err != nil {
+		return err
+	}
+
+	// Fetch Hackathon to get weights
+	hackathon, err := s.repo.GetByID(project.HackathonID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate TotalScore
+	var evalTotal float64
+	for _, cs := range eval.Criteria {
+		weight := 0.0
+		for _, hc := range hackathon.Criteria {
+			if hc.Name == cs.Name {
+				weight = hc.Weight
+				break
+			}
+		}
+		evalTotal += cs.Score * weight
+	}
+	eval.TotalScore = evalTotal
+
 	if err := s.evalRepo.Save(eval); err != nil {
 		return err
 	}
@@ -45,7 +71,7 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 	for _, e := range evals {
 		total += e.TotalScore
 	}
-	avg := total / float64(len(evals))
+	average := total / float64(len(evals))
 
-	return s.projectRepo.UpdateScore(eval.ProjectID, avg)
+	return s.projectRepo.UpdateScore(eval.ProjectID, average)
 }
