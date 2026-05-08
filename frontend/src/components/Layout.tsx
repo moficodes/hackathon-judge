@@ -15,6 +15,14 @@ export default function Layout() {
                 to="/" 
                 className="block px-md py-sm rounded hover:bg-white/10 transition-colors text-sm font-semibold tracking-wide"
               >
+                Home
+              </Link>
+            </li>
+            <li>
+              <Link 
+                to="/dashboard" 
+                className="block px-md py-sm rounded hover:bg-white/10 transition-colors text-sm font-semibold tracking-wide"
+              >
                 Dashboard
               </Link>
             </li>

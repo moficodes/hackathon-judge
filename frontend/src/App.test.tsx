@@ -21,4 +21,31 @@ describe('App Component', () => {
     );
     expect(screen.getByText(/This is a tool for judging hackathons/i)).toBeInTheDocument();
   });
+
+  it('renders the dashboard page', () => {
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/Loading hackathons\.\.\./i)).toBeInTheDocument();
+  });
+
+  it('renders the hackathon detail page', () => {
+    render(
+      <MemoryRouter initialEntries={['/hackathons/1']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/Loading projects\.\.\./i)).toBeInTheDocument();
+  });
+
+  it('renders the project detail page', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/1']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/Loading evaluations\.\.\./i)).toBeInTheDocument();
+  });
 });
