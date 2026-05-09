@@ -1,14 +1,14 @@
-import { Link, NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+
+const navItems = [
+  { name: 'Home', path: '/' },
+  { name: 'Dashboard', path: '/dashboard' },
+  { name: 'About', path: '/about' },
+];
 
 export default function Sidebar() {
-  const navItems = [
-    { name: 'Home', path: '/' },
-    { name: 'Dashboard', path: '/dashboard' },
-    { name: 'About', path: '/about' },
-  ];
-
   return (
-    <aside className="bg-slate-950 text-white border-r border-white/10 shadow-sm z-10 flex flex-col w-[240px]">
+    <aside className="bg-primary text-white border-r border-white/10 shadow-sm z-10 flex flex-col w-[240px]">
       <div className="p-lg font-bold text-lg border-b border-white/10">
         Hackathon Judge
       </div>
