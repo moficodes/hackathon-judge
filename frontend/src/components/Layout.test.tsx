@@ -1,17 +1,24 @@
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { describe, it, expect } from 'vitest';
 import Layout from './Layout';
+import { expect, test, vi } from 'vitest';
 
-describe('Layout Component', () => {
-  it('renders navigation links', () => {
-    render(
-      <BrowserRouter>
-        <Layout />
-      </BrowserRouter>
-    );
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard');
-    expect(screen.getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
-  });
+// Mock components to focus on Layout's structural role
+vi.mock('./Sidebar', () => ({
+  default: () => <div data-testid="sidebar">Sidebar</div>
+}));
+vi.mock('./Header', () => ({
+  default: () => <div data-testid="header">Header</div>
+}));
+
+test('renders Sidebar, Header, and main content area', () => {
+  render(
+    <BrowserRouter>
+      <Layout />
+    </BrowserRouter>
+  );
+  
+  expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+  expect(screen.getByTestId('header')).toBeInTheDocument();
+  expect(screen.getByRole('main')).toBeInTheDocument();
 });
