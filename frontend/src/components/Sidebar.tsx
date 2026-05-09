@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
+import { Home, LayoutDashboard, Info } from 'lucide-react';
 
 const navItems = [
-  { name: 'Home', path: '/' },
-  { name: 'Dashboard', path: '/dashboard' },
-  { name: 'About', path: '/about' },
+  { name: 'Home', path: '/', icon: Home },
+  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { name: 'About', path: '/about', icon: Info },
 ];
 
 export default function Sidebar() {
@@ -19,11 +20,12 @@ export default function Sidebar() {
               <NavLink
                 to={item.path}
                 className={({ isActive }) =>
-                  `block px-md py-sm rounded transition-colors text-sm font-semibold tracking-wide ${
+                  `flex items-center gap-md px-md py-sm rounded transition-colors text-sm font-semibold tracking-wide ${
                     isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
                   }`
                 }
               >
+                <item.icon className="w-4 h-4" />
                 {item.name}
               </NavLink>
             </li>

@@ -5,6 +5,7 @@ import About from './pages/About'
 import Dashboard from './pages/Dashboard'
 import HackathonDetail from './pages/HackathonDetail'
 import ProjectDetail from './pages/ProjectDetail'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="hackathons/:id" element={<HackathonDetail />} />
         <Route path="projects/:id" element={<ProjectDetail />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )
