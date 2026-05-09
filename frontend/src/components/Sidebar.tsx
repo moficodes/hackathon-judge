@@ -8,7 +8,7 @@ const navItems = [
 
 export default function Sidebar() {
   return (
-    <aside className="bg-primary text-white border-r border-white/10 shadow-sm z-10 flex flex-col w-[240px]">
+    <aside className="hidden md:flex bg-primary text-white border-r border-white/10 shadow-sm z-10 flex-col w-[240px]">
       <div className="p-lg font-bold text-lg border-b border-white/10">
         Hackathon Judge
       </div>
