@@ -15,9 +15,12 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 
 	// memoryRepo initializes a project with ID "p1" under hackathon "1"
 	eval1 := domain.Evaluation{
-		ID:         "e1",
-		ProjectID:  "p1",
-		TotalScore: 80.0,
+		ID:        "e1",
+		ProjectID: "p1",
+		Criteria: []domain.CriteriaScore{
+			{Name: "Technology", Score: 4}, // Weight is 2 from mock data -> 8
+			{Name: "Design", Score: 5},     // Weight is 1 from mock data -> 5
+		},
 	}
 
 	err := svc.AddEvaluation(eval1)
@@ -26,12 +29,15 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	projects, err := svc.ListProjectsByHackathon("1")
 	assert.NoError(t, err)
 	assert.Len(t, projects, 1)
-	assert.Equal(t, 80.0, projects[0].Score)
+	assert.Equal(t, 13.0, projects[0].Score) // (4*2) + (5*1) = 13
 
 	eval2 := domain.Evaluation{
-		ID:         "e2",
-		ProjectID:  "p1",
-		TotalScore: 90.0,
+		ID:        "e2",
+		ProjectID: "p1",
+		Criteria: []domain.CriteriaScore{
+			{Name: "Technology", Score: 2}, // Weight 2 -> 4
+			{Name: "Design", Score: 3},     // Weight 1 -> 3
+		},
 	}
 
 	err = svc.AddEvaluation(eval2)
@@ -40,5 +46,5 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	projects, err = svc.ListProjectsByHackathon("1")
 	assert.NoError(t, err)
 	assert.Len(t, projects, 1)
-	assert.Equal(t, 85.0, projects[0].Score)
+	assert.Equal(t, 10.0, projects[0].Score) // (13 + 7) / 2 = 10
 }

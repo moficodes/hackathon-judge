@@ -3,9 +3,9 @@ package domain
 import "time"
 
 type CriteriaScore struct {
-	Name   string  `json:"name"`
-	Score  float64 `json:"score"`
-	Weight float64 `json:"weight"`
+	Name      string  `json:"name"`
+	Score     float64 `json:"score"`
+	Reasoning string  `json:"reasoning"`
 }
 
 type Evaluation struct {

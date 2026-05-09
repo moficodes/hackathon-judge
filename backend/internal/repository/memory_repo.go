@@ -17,7 +17,16 @@ type memoryRepo struct {
 func NewMemoryRepo() *memoryRepo {
 	return &memoryRepo{
 		hackathons: []domain.Hackathon{
-			{ID: "1", Name: "Hack1", Title: "Summer Hack", Status: "Active"},
+			{
+				ID:     "1",
+				Name:   "Hack1",
+				Title:  "Summer Hack",
+				Status: "Active",
+				Criteria: []domain.Criterion{
+					{Name: "Technology", Weight: 2, Description: "1-barely works, 5-really good tested"},
+					{Name: "Design", Weight: 1, Description: "1-ugly, 5-beautiful"},
+				},
+			},
 		},
 		projects: []domain.Project{
 			{ID: "p1", Name: "Proj1", HackathonID: "1", Score: 0},
@@ -84,4 +93,15 @@ func (r *memoryRepo) UpdateScore(projectID string, score float64) error {
 		}
 	}
 	return errors.New("project not found")
+}
+
+func (r *memoryRepo) GetProjectByID(id string) (domain.Project, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.projects {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return domain.Project{}, errors.New("project not found")
 }
