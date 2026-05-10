@@ -1,0 +1,58 @@
+steps:
+  # 1. Build Backend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend:latest', '.']
+    dir: 'backend'
+    id: 'build-backend'
+
+  # 2. Build Frontend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend:latest', '.']
+    dir: 'frontend'
+    id: 'build-frontend'
+
+  # 3. Build Agent
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent:latest', '.']
+    dir: 'agent'
+    id: 'build-agent'
+
+  # 4. Build Agent Sandbox
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox:latest', '.']
+    dir: 'agent-sandbox'
+    id: 'build-agent-sandbox'
+
+  # 5. Push Backend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend']
+    waitFor: ['build-backend']
+
+  # 6. Push Frontend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend']
+    waitFor: ['build-frontend']
+
+  # 7. Push Agent
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent']
+    waitFor: ['build-agent']
+
+  # 8. Push Agent Sandbox
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox']
+    waitFor: ['build-agent-sandbox']
+
+images:
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend:$COMMIT_SHA'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend:$COMMIT_SHA'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent:$COMMIT_SHA'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox:$COMMIT_SHA'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend:latest'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend:latest'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent:latest'
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox:latest'
+
+substitutions:
+  _REGION: us
+  _REPO: hackathon-judge
