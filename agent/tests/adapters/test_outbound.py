@@ -6,8 +6,39 @@ from src.adapters.outbound.adk_agent import ADKAgentAdapter
 from src.adapters.outbound.pubsub_publisher import MockPubSubPublisherAdapter, PubSubPublisherAdapter
 
 @pytest.mark.asyncio
-async def test_adk_agent_adapter():
+@patch('src.adapters.outbound.adk_agent.Runner')
+async def test_adk_agent_adapter(mock_runner_cls):
+    # Setup mock runner to avoid real API calls
+    mock_runner_instance = MagicMock()
+    mock_runner_cls.return_value = mock_runner_instance
+    
+    # Mock run_async to just yield an empty event stream (or nothing)
+    async def mock_run_async(*args, **kwargs):
+        # We need to simulate setting the state in the session since the agent would do that
+        session_service = kwargs.get('session_service')
+        # In the actual code, session is retrieved from the agent's session_service.
+        # But we can just monkeypatch the session_service of the ADKAgentAdapter inside the test.
+        yield
+        
+    mock_runner_instance.run_async = mock_run_async
+
     agent = ADKAgentAdapter()
+    
+    # Monkeypatch the session service to return a mocked session
+    original_get_session = agent.session_service.get_session
+    async def fake_get_session(*args, **kwargs):
+        session = await original_get_session(*args, **kwargs)
+        from src.adapters.outbound.adk_agent import EvaluationOutput, EvaluationScore
+        session.state["evaluation_result"] = EvaluationOutput(
+            scores=[EvaluationScore(name="Innovation", score=8.5, reasoning="Very innovative")],
+            total_score=8.5,
+            overall_comments="Great project",
+            confidence_score=0.9
+        )
+        return session
+
+    agent.session_service.get_session = fake_get_session
+
     req = AgentRequest(
         task_id="tsk_1",
         project_name="Test Project",
@@ -17,9 +48,12 @@ async def test_adk_agent_adapter():
         scoring_criteria=[ScoringCriteria(name="Innovation", weight=0.5)]
     )
     res = await agent.process_message(req)
+    
     assert res.task_id == "tsk_1"
-    # Basic check to ensure we get a status
-    assert res.status in ["success", "error"]
+    assert res.status == "success"
+    assert res.total_score == 8.5
+    assert len(res.scores) == 1
+    assert res.scores[0].name == "Innovation"
 
 @pytest.mark.asyncio
 async def test_mock_publisher():

@@ -1,20 +1,119 @@
 # src/adapters/outbound/adk_agent.py
 from src.core.ports.agent_service import AgentService
-from src.core.models.message import AgentRequest, AgentResponse
+from src.core.models.message import AgentRequest, AgentResponse, CategoryScore
 import asyncio
+
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types as genai_types
+from pydantic import BaseModel, Field
+from typing import List
+
+class EvaluationScore(BaseModel):
+    name: str = Field(description="The name of the scoring criteria category.")
+    score: float = Field(description="The awarded score.")
+    reasoning: str = Field(description="The reasoning behind this score.")
+
+class EvaluationOutput(BaseModel):
+    scores: List[EvaluationScore]
+    total_score: float = Field(description="The total score summing up all category scores.")
+    overall_comments: str = Field(description="Overall comments on the project.")
+    confidence_score: float = Field(description="Score between 0.0 and 1.0 indicating confidence in the evaluation.")
 
 class ADKAgentAdapter(AgentService):
     def __init__(self):
-        # Scaffolded for ADK integration. In a real app, initialize ADK Agent here.
-        # e.g., self.agent = Agent(...)
-        pass
-        
-    async def process_message(self, request: AgentRequest) -> AgentResponse:
-        # Simulate ADK processing asynchronously
-        await asyncio.sleep(0.1) 
-        # In reality, this would be: result = await self.agent.run(request.text)
-        return AgentResponse(
-            task_id=request.task_id,
-            status="success",
-            overall_comments=f"Processed project {request.project_name}"
+        self.agent = Agent(
+            name="hackathon_judge",
+            model="gemini-3-flash-preview",
+            instruction="""
+You are an expert hackathon judge evaluating a project.
+Analyze the provided submission and evaluate it against the given criteria and rubric.
+Be highly objective and provide detailed reasoning for each score.
+            """,
+            output_schema=EvaluationOutput,
+            output_key="evaluation_result",
         )
+        self.session_service = InMemorySessionService()
+        self.runner = Runner(
+            agent=self.agent,
+            app_name="hackathon_judge_app",
+            session_service=self.session_service
+        )
+
+    async def process_message(self, request: AgentRequest) -> AgentResponse:
+        try:
+            # Format criteria
+            criteria_text = "\n".join([f"- {c.name} (Weight: {c.weight}, Max Score: {c.max_score})" for c in request.scoring_criteria])
+            
+            prompt = f"""
+Project Name: {request.project_name}
+GitHub URL: {request.github_url}
+
+Submission Description:
+{request.submission_text}
+
+Judging Rubric:
+{request.judging_rubric}
+
+Scoring Criteria:
+{criteria_text}
+
+Please evaluate this project and provide scores for each category.
+"""
+            session_id = f"session_{request.task_id}"
+            user_id = "system"
+            
+            await self.session_service.create_session(
+                app_name="hackathon_judge_app", 
+                user_id=user_id, 
+                session_id=session_id
+            )
+
+            # Run the agent
+            async for _ in self.runner.run_async(
+                user_id=user_id,
+                session_id=session_id,
+                new_message=genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])
+            ):
+                pass
+                
+            session = await self.session_service.get_session(app_name="hackathon_judge_app", user_id=user_id, session_id=session_id)
+            eval_output_dict = session.state.get("evaluation_result")
+            
+            if not eval_output_dict:
+                return AgentResponse(
+                    task_id=request.task_id,
+                    status="error",
+                    error_message="Agent failed to produce evaluation_result in state."
+                )
+                
+            # Parse output
+            if isinstance(eval_output_dict, EvaluationOutput):
+                eval_output = eval_output_dict
+            else:
+                eval_output = EvaluationOutput.model_validate(eval_output_dict)
+            
+            # Map to response schema
+            category_scores = [
+                CategoryScore(name=s.name, score=s.score, reasoning=s.reasoning)
+                for s in eval_output.scores
+            ]
+            
+            return AgentResponse(
+                task_id=request.task_id,
+                status="success",
+                scores=category_scores,
+                total_score=eval_output.total_score,
+                overall_comments=eval_output.overall_comments,
+                confidence_score=eval_output.confidence_score
+            )
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return AgentResponse(
+                task_id=request.task_id,
+                status="error",
+                error_message=str(e)
+            )
