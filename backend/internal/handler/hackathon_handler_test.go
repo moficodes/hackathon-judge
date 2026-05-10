@@ -18,7 +18,7 @@ func setupRouter() (*gin.Engine, service.HackathonService) {
 	gin.SetMode(gin.TestMode)
 	r := gin.Default()
 	repo := repository.NewMemoryRepo()
-	svc := service.NewHackathonService(repo, repo, repo)
+	svc := service.NewHackathonService(repo, repo, repo, nil)
 	h := handler.NewHackathonHandler(svc)
 	h.RegisterRoutes(r)
 	return r, svc

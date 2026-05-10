@@ -1,3 +1,9 @@
+import os
+import pytest
+
+# Ensure we use mock Pub/Sub during tests BEFORE importing the app
+os.environ["USE_MOCK_PUBSUB"] = "true"
+
 from fastapi.testclient import TestClient
 from src.main import app
 

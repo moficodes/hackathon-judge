@@ -14,6 +14,7 @@ class ADKAgentAdapter(AgentService):
         await asyncio.sleep(0.1) 
         # In reality, this would be: result = await self.agent.run(request.text)
         return AgentResponse(
-            original_message_id=request.message_id,
-            response_text=f"Processed by ADK: {request.text}"
+            task_id=request.task_id,
+            status="success",
+            overall_comments=f"Processed project {request.project_name}"
         )

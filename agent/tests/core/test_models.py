@@ -1,12 +1,25 @@
 # tests/core/test_models.py
-from src.core.models.message import AgentRequest, AgentResponse
+from src.core.models.message import AgentRequest, AgentResponse, ScoringCriteria, CategoryScore
 
 def test_agent_request_model():
-    req = AgentRequest(message_id="123", text="Hello")
-    assert req.message_id == "123"
-    assert req.text == "Hello"
+    req = AgentRequest(
+        task_id="tsk_123",
+        project_name="Test Project",
+        github_url="https://github.com/moficodes/test",
+        submission_text="Here is my code",
+        judging_rubric="Be nice",
+        scoring_criteria=[ScoringCriteria(name="Innovation", weight=0.5)]
+    )
+    assert req.task_id == "tsk_123"
+    assert req.scoring_criteria[0].max_score == 10.0
 
 def test_agent_response_model():
-    res = AgentResponse(original_message_id="123", response_text="Hi there")
-    assert res.original_message_id == "123"
-    assert res.response_text == "Hi there"
+    res = AgentResponse(
+        task_id="tsk_123",
+        status="success",
+        scores=[CategoryScore(name="Innovation", score=8, reasoning="Good")],
+        total_score=4.0
+    )
+    assert res.task_id == "tsk_123"
+    assert res.status == "success"
+    assert len(res.scores) == 1

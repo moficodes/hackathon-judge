@@ -1,22 +1,28 @@
 package service
 
-import "github.com/moficodes/hackathon-judge/backend/internal/domain"
+import (
+	"fmt"
+	"github.com/google/uuid"
+	"github.com/moficodes/hackathon-judge/backend/internal/domain"
+)
 
 type HackathonService interface {
 	ListHackathons() ([]domain.Hackathon, error)
 	ListProjectsByHackathon(id string) ([]domain.Project, error)
 	AddEvaluation(eval domain.Evaluation) error
 	ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error)
+	TriggerJudging(projectID string) (string, error)
 }
 
 type hackathonService struct {
 	repo        domain.HackathonRepository
 	projectRepo domain.ProjectRepository
 	evalRepo    domain.EvaluationRepository
+	publisher   domain.TaskPublisher
 }
 
-func NewHackathonService(repo domain.HackathonRepository, projectRepo domain.ProjectRepository, evalRepo domain.EvaluationRepository) HackathonService {
-	return &hackathonService{repo: repo, projectRepo: projectRepo, evalRepo: evalRepo}
+func NewHackathonService(repo domain.HackathonRepository, projectRepo domain.ProjectRepository, evalRepo domain.EvaluationRepository, publisher domain.TaskPublisher) HackathonService {
+	return &hackathonService{repo: repo, projectRepo: projectRepo, evalRepo: evalRepo, publisher: publisher}
 }
 
 func (s *hackathonService) ListHackathons() ([]domain.Hackathon, error) {
@@ -74,4 +80,50 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 	average := total / float64(len(evals))
 
 	return s.projectRepo.UpdateScore(eval.ProjectID, average)
+}
+
+func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
+	// Fetch project
+	project, err := s.projectRepo.GetProjectByID(projectID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// Fetch hackathon for criteria
+	hackathon, err := s.repo.GetByID(project.HackathonID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get hackathon: %w", err)
+	}
+
+	// Create judging criteria mapping
+	var scoringCriteria []domain.ScoringCriteria
+	for _, c := range hackathon.Criteria {
+		scoringCriteria = append(scoringCriteria, domain.ScoringCriteria{
+			Name:     c.Name,
+			Weight:   c.Weight,
+			MaxScore: 10.0, // Assuming 10 for now
+		})
+	}
+
+	taskID := "tsk_" + uuid.New().String()
+
+	task := domain.JudgingTask{
+		TaskID:          taskID,
+		ProjectName:     project.Name,
+		GithubURL:       project.GitHubURL,
+		SubmissionText:  project.Document,
+		JudgingRubric:   hackathon.Goal + "\n" + hackathon.Description,
+		ScoringCriteria: scoringCriteria,
+	}
+
+	if s.publisher != nil {
+		if err := s.publisher.PublishTask(task); err != nil {
+			return "", fmt.Errorf("failed to publish task: %w", err)
+		}
+	} else {
+		// Mock handling when publisher is nil (e.g. for simple tests)
+		fmt.Printf("Mock published task %s for project %s\n", taskID, project.Name)
+	}
+
+	return taskID, nil
 }

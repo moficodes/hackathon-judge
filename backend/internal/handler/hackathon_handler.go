@@ -20,6 +20,7 @@ func (h *HackathonHandler) RegisterRoutes(r *gin.Engine) {
 		api.GET("/hackathons", h.GetHackathons)
 		api.GET("/hackathons/:id/projects", h.GetProjects)
 		api.GET("/projects/:id/evaluations", h.GetEvaluations)
+		api.POST("/projects/:id/judge", h.TriggerJudging)
 	}
 }
 
@@ -50,4 +51,17 @@ func (h *HackathonHandler) GetEvaluations(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, res)
+}
+
+func (h *HackathonHandler) TriggerJudging(c *gin.Context) {
+	id := c.Param("id")
+	taskID, err := h.svc.TriggerJudging(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Judging task created",
+		"task_id": taskID,
+	})
 }

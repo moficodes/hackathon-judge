@@ -11,7 +11,7 @@ import (
 
 func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	repo := repository.NewMemoryRepo()
-	svc := service.NewHackathonService(repo, repo, repo)
+	svc := service.NewHackathonService(repo, repo, repo, nil)
 
 	// memoryRepo initializes a project with ID "p1" under hackathon "1"
 	eval1 := domain.Evaluation{
