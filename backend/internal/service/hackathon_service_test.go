@@ -37,6 +37,7 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 		Criteria: []domain.CriteriaScore{
 			{Name: "Innovation & Originality", Score: 2}, // Weight 0.2 -> 0.4
 			{Name: "Technical Execution", Score: 3},      // Weight 0.25 -> 0.75
+			{Name: "Clean Code", Score: 2},               // Bonus: Weight 2 -> 4.0
 		},
 	}
 
@@ -46,5 +47,5 @@ func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	projects, err = svc.ListProjectsByHackathon("1")
 	assert.NoError(t, err)
 	assert.Len(t, projects, 1)
-	assert.InDelta(t, 1.6, projects[0].Score, 0.0001) // (2.05 + 1.15) / 2 = 1.6
+	assert.InDelta(t, 3.6, projects[0].Score, 0.0001) // (2.05 + 5.15) / 2 = 7.2 / 2 = 3.6
 }
