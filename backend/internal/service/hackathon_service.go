@@ -34,7 +34,21 @@ func (s *hackathonService) ListProjectsByHackathon(id string) ([]domain.Project,
 }
 
 func (s *hackathonService) ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error) {
-	return s.evalRepo.GetByProjectID(projectID)
+	// Verify project exists
+	if _, err := s.projectRepo.GetProjectByID(projectID); err != nil {
+		return nil, fmt.Errorf("failed to get project: %w", err)
+	}
+
+	evals, err := s.evalRepo.GetByProjectID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure we return an empty array instead of null for JSON serialization
+	if evals == nil {
+		return []domain.Evaluation{}, nil
+	}
+	return evals, nil
 }
 
 func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {

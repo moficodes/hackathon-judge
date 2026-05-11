@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"cloud.google.com/go/bigquery"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/moficodes/hackathon-judge/backend/internal/domain"
@@ -19,7 +20,7 @@ const defaultPort = ":8080"
 
 func main() {
 	logger.Init()
-	
+
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, relying on environment variables")
@@ -70,8 +71,26 @@ func main() {
 		}()
 	}
 
-	repo := repository.NewMemoryRepo()
-	svc := service.NewHackathonService(repo, repo, repo, publisher)
+	var hackathonRepo domain.HackathonRepository
+	var projectRepo domain.ProjectRepository
+	var evalRepo domain.EvaluationRepository
+
+	bqClient, err := bigquery.NewClient(context.Background(), projectID)
+	if err != nil {
+		log.Printf("Warning: failed to initialize BigQuery client: %v. Falling back to MemoryRepo.", err)
+		memRepo := repository.NewMemoryRepo()
+		hackathonRepo = memRepo
+		projectRepo = memRepo
+		evalRepo = memRepo
+	} else {
+		log.Println("Successfully initialized BigQuery client.")
+		bqRepo := repository.NewBigQueryRepo(bqClient, projectID)
+		hackathonRepo = bqRepo
+		projectRepo = bqRepo
+		evalRepo = bqRepo
+	}
+
+	svc := service.NewHackathonService(hackathonRepo, projectRepo, evalRepo, publisher)
 	h := handler.NewHackathonHandler(svc)
 
 	h.RegisterRoutes(r)

@@ -47,6 +47,11 @@ func (h *HackathonHandler) GetEvaluations(c *gin.Context) {
 	id := c.Param("id")
 	res, err := h.svc.ListEvaluationsByProject(id)
 	if err != nil {
+		// Use a simple string check to determine if the project wasn't found
+		if err.Error() == "failed to get project: project not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
