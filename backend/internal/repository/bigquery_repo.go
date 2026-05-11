@@ -276,7 +276,14 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 		return fmt.Errorf("failed to marshal criteria: %w", err)
 	}
 
-	query := r.client.Query(fmt.Sprintf("UPDATE `%s.evaluations.evaluations` SET status = @status, total_score = @total_score, comment = @comment, criteria_json = @criteria_json WHERE id = @id", r.projectID))
+	query := r.client.Query(fmt.Sprintf(`
+		UPDATE %s.evaluations.evaluations 
+		SET status = @status, 
+		    total_score = @total_score, 
+		    comment = @comment, 
+		    criteria_json = @criteria_json 
+		WHERE id = @id`, r.projectID))
+
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: eval.ID},
 		{Name: "status", Value: eval.Status},
@@ -302,58 +309,60 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.evaluations.evaluations` WHERE id = @id LIMIT 1", r.projectID))
+
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.evaluations.evaluations` WHERE id = @id LIMIT 1", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
 	}
+
 	it, err := query.Read(ctx)
 	if err != nil {
 		return domain.Evaluation{}, fmt.Errorf("failed to read evaluation: %w", err)
 	}
 
-	var row bqEvaluation
-	err = it.Next(&row)
-	if err == iterator.Done {
-		return domain.Evaluation{}, fmt.Errorf("evaluation not found")
-	}
+	var bqEval bqEvaluation
+	err = it.Next(&bqEval)
 	if err != nil {
-		return domain.Evaluation{}, fmt.Errorf("failed to iterate evaluation: %w", err)
+		return domain.Evaluation{}, fmt.Errorf("evaluation not found: %w", err)
 	}
 
-	eval := domain.Evaluation{
-		ID:         row.ID,
-		ProjectID:  row.ProjectID,
-		JudgeID:    row.JudgeID,
-		Status:     row.Status,
-		TotalScore: row.TotalScore,
-		Comment:    row.Comment,
-		CreatedAt:  row.CreatedAt,
-	}
-
-	if row.CriteriaJSON != "" {
-		if err := json.Unmarshal([]byte(row.CriteriaJSON), &eval.Criteria); err != nil {
-			return domain.Evaluation{}, fmt.Errorf("failed to unmarshal criteria JSON: %w", err)
+	var criteria []domain.CriteriaScore
+	if bqEval.CriteriaJSON != "" {
+		if err := json.Unmarshal([]byte(bqEval.CriteriaJSON), &criteria); err != nil {
+			return domain.Evaluation{}, fmt.Errorf("failed to unmarshal criteria: %w", err)
 		}
 	}
-	return eval, nil
+
+	return domain.Evaluation{
+		ID:         bqEval.ID,
+		ProjectID:  bqEval.ProjectID,
+		JudgeID:    bqEval.JudgeID,
+		Status:     bqEval.Status,
+		TotalScore: bqEval.TotalScore,
+		Comment:    bqEval.Comment,
+		CreatedAt:  bqEval.CreatedAt,
+		Criteria:   criteria,
+	}, nil
 }
 
 func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.evaluations.evaluations` WHERE project_id = @project_id", r.projectID))
+
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.evaluations.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "project_id", Value: projectID},
 	}
+
 	it, err := query.Read(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read evaluations: %w", err)
+		return nil, fmt.Errorf("failed to query evaluations: %w", err)
 	}
 
 	var evaluations []domain.Evaluation
 	for {
-		var row bqEvaluation
-		err := it.Next(&row)
+		var bqEval bqEvaluation
+		err := it.Next(&bqEval)
 		if err == iterator.Done {
 			break
 		}
@@ -361,22 +370,24 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 			return nil, fmt.Errorf("failed to iterate evaluations: %w", err)
 		}
 
-		eval := domain.Evaluation{
-			ID:         row.ID,
-			ProjectID:  row.ProjectID,
-			JudgeID:    row.JudgeID,
-			Status:     row.Status,
-			TotalScore: row.TotalScore,
-			Comment:    row.Comment,
-			CreatedAt:  row.CreatedAt,
-		}
-
-		if row.CriteriaJSON != "" {
-			if err := json.Unmarshal([]byte(row.CriteriaJSON), &eval.Criteria); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal criteria JSON: %w", err)
+		var criteria []domain.CriteriaScore
+		if bqEval.CriteriaJSON != "" {
+			if err := json.Unmarshal([]byte(bqEval.CriteriaJSON), &criteria); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal criteria: %w", err)
 			}
 		}
-		evaluations = append(evaluations, eval)
+
+		evaluations = append(evaluations, domain.Evaluation{
+			ID:         bqEval.ID,
+			ProjectID:  bqEval.ProjectID,
+			JudgeID:    bqEval.JudgeID,
+			Status:     bqEval.Status,
+			TotalScore: bqEval.TotalScore,
+			Comment:    bqEval.Comment,
+			CreatedAt:  bqEval.CreatedAt,
+			Criteria:   criteria,
+		})
 	}
+
 	return evaluations, nil
 }
