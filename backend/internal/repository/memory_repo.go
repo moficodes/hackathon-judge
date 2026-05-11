@@ -22,8 +22,16 @@ func NewMemoryRepo() *memoryRepo {
 				Title:  "Summer Hack",
 				Status: "Active",
 				Criteria: []domain.Criterion{
-					{Name: "Technology", Weight: 2, Description: "1-barely works, 5-really good tested"},
-					{Name: "Design", Weight: 1, Description: "1-ugly, 5-beautiful"},
+					{Name: "Innovation & Originality", Weight: 0.2, Description: "How unique and original is the productivity tool?\n\n**Low (1-2):** The project is essentially a \"Hello World\" of productivity (e.g., a basic CRUD to-do list with no unique features).\n**High (4-5):** The team identified a unique bottleneck—like \"context switching\" or \"decision fatigue\"—and built a tool specifically to kill that problem."},
+					{Name: "Theme Alignment (Impact)", Weight: 0.25, Description: "Does the app actually save time or remove friction?\n\n**Low (1-2):** The app might be cool, but it doesn't actually make the user more efficient.\n**High (4-5):** Does the app actually save time? Does it remove friction? A 5/5 project makes the judges want to start using the app immediately for their own work."},
+					{Name: "Technical Execution", Weight: 0.25, Description: "Quality of implementation and technical complexity.\n\n**Low (1-2):** Code is messy, or the \"app\" is just a series of static HTML pages with no logic.\n**High (4-5):** The team integrated complex elements (e.g., AI APIs, browser extensions, real-time sync, or advanced data visualization) successfully within the hackathon timeframe."},
+					{Name: "User Experience (UX/UI)", Weight: 0.2, Description: "Design for focus, minimal distractions, and clear feedback.\n\n**Low (1-2):** Buttons don't work, text is unreadable, or the workflow is frustrating.\n**High (4-5):** For productivity tools, **less is more**. Points are awarded for \"Flow State\" design—minimal distractions, keyboard shortcuts, and clear feedback."},
+					{Name: "Pitch & Demo", Weight: 0.1, Description: "Quality of the presentation and live demonstration.\n\n**Low (1-2):** The team spent too much time on the technical stack and forgot to show the actual product.\n**High (4-5):** The team clearly demonstrated a \"use case.\" They showed exactly how a user's life is better after using their tool."},
+				},
+				BonusCriteria: []domain.Criterion{
+					{Name: "Clean Code", Weight: 2, Description: "Repository is well-documented with a clear README."},
+					{Name: "Accessibility", Weight: 1, Description: "Project considers screen readers, high contrast, or keyboard-only navigation."},
+					{Name: "Wow Factor", Weight: 2, Description: "A specific feature that made the judges say \"Wait, how did they build that in 24 hours?\""},
 				},
 			},
 		},

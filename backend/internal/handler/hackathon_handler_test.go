@@ -63,8 +63,8 @@ func TestListEvaluationsByProject(t *testing.T) {
 	err := svc.AddEvaluation(domain.Evaluation{
 		ID: "e1", ProjectID: "p1", JudgeID: "j1",
 		Criteria: []domain.CriteriaScore{
-			{Name: "Technology", Score: 4}, // 8
-			{Name: "Design", Score: 5},     // 5 -> 13
+			{Name: "Innovation & Originality", Score: 4}, // 0.8
+			{Name: "Technical Execution", Score: 5},      // 1.25 -> 2.05
 		},
 	})
 	assert.NoError(t, err)
@@ -80,5 +80,5 @@ func TestListEvaluationsByProject(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, res, 1)
 	assert.Equal(t, "e1", res[0].ID)
-	assert.Equal(t, 13.0, res[0].TotalScore)
+	assert.Equal(t, 2.05, res[0].TotalScore)
 }
