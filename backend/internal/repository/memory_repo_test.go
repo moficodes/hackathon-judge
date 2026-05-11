@@ -5,6 +5,7 @@ import (
 	"github.com/moficodes/hackathon-judge/backend/internal/repository"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestMemoryRepo_Concurrency(t *testing.T) {
@@ -72,5 +73,33 @@ func TestMemoryRepo_UpdateScore(t *testing.T) {
 
 	if p1.Score != 99.5 {
 		t.Errorf("Expected score to be 99.5, got %f", p1.Score)
+	}
+}
+
+func TestMemoryRepo_Update(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	eval := domain.Evaluation{
+		ID:         "eval1",
+		ProjectID:  "p1",
+		JudgeID:    "j1",
+		Status:     "RUNNING",
+		TotalScore: 0,
+		Comment:    "",
+		CreatedAt:  time.Now(),
+	}
+	_ = repo.Save(eval)
+
+	eval.Status = "SUCCESS"
+	eval.TotalScore = 95.5
+	eval.Comment = "Great job"
+	
+	err := repo.Update(eval)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	evals, _ := repo.GetByProjectID("p1")
+	if len(evals) != 1 || evals[0].Status != "SUCCESS" || evals[0].TotalScore != 95.5 {
+		t.Fatalf("update failed, got: %+v", evals)
 	}
 }

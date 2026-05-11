@@ -90,6 +90,29 @@ func (r *memoryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, erro
 	return result, nil
 }
 
+func (r *memoryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, e := range r.evaluations {
+		if e.ID == id {
+			return e, nil
+		}
+	}
+	return domain.Evaluation{}, errors.New("evaluation not found")
+}
+
+func (r *memoryRepo) Update(eval domain.Evaluation) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, e := range r.evaluations {
+		if e.ID == eval.ID {
+			r.evaluations[i] = eval
+			return nil
+		}
+	}
+	return errors.New("evaluation not found")
+}
+
 func (r *memoryRepo) UpdateScore(projectID string, score float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
