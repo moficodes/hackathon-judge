@@ -221,6 +221,7 @@ type bqEvaluation struct {
 	ID           string    `bigquery:"id"`
 	ProjectID    string    `bigquery:"project_id"`
 	JudgeID      string    `bigquery:"judge_id"`
+	Status       string    `bigquery:"status"`
 	TotalScore   float64   `bigquery:"total_score"`
 	Comment      string    `bigquery:"comment"`
 	CreatedAt    time.Time `bigquery:"created_at"`
@@ -240,11 +241,12 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		eval.CreatedAt = time.Now()
 	}
 
-	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.evaluations.evaluations` (id, project_id, judge_id, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
+	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.evaluations.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: eval.ID},
 		{Name: "project_id", Value: eval.ProjectID},
 		{Name: "judge_id", Value: eval.JudgeID},
+		{Name: "status", Value: eval.Status},
 		{Name: "total_score", Value: eval.TotalScore},
 		{Name: "comment", Value: eval.Comment},
 		{Name: "created_at", Value: eval.CreatedAt},
@@ -263,6 +265,77 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		return fmt.Errorf("insert query failed: %w", status.Err())
 	}
 	return nil
+}
+
+func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	criteriaBytes, err := json.Marshal(eval.Criteria)
+	if err != nil {
+		return fmt.Errorf("failed to marshal criteria: %w", err)
+	}
+
+	query := r.client.Query(fmt.Sprintf("UPDATE `%s.evaluations.evaluations` SET status = @status, total_score = @total_score, comment = @comment, criteria_json = @criteria_json WHERE id = @id", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "id", Value: eval.ID},
+		{Name: "status", Value: eval.Status},
+		{Name: "total_score", Value: eval.TotalScore},
+		{Name: "comment", Value: eval.Comment},
+		{Name: "criteria_json", Value: string(criteriaBytes)},
+	}
+
+	job, err := query.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to run update query: %w", err)
+	}
+	status, err := job.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for update query: %w", err)
+	}
+	if status.Err() != nil {
+		return fmt.Errorf("update query failed: %w", status.Err())
+	}
+	return nil
+}
+
+func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.evaluations.evaluations` WHERE id = @id LIMIT 1", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "id", Value: id},
+	}
+	it, err := query.Read(ctx)
+	if err != nil {
+		return domain.Evaluation{}, fmt.Errorf("failed to read evaluation: %w", err)
+	}
+
+	var row bqEvaluation
+	err = it.Next(&row)
+	if err == iterator.Done {
+		return domain.Evaluation{}, fmt.Errorf("evaluation not found")
+	}
+	if err != nil {
+		return domain.Evaluation{}, fmt.Errorf("failed to iterate evaluation: %w", err)
+	}
+
+	eval := domain.Evaluation{
+		ID:         row.ID,
+		ProjectID:  row.ProjectID,
+		JudgeID:    row.JudgeID,
+		Status:     row.Status,
+		TotalScore: row.TotalScore,
+		Comment:    row.Comment,
+		CreatedAt:  row.CreatedAt,
+	}
+
+	if row.CriteriaJSON != "" {
+		if err := json.Unmarshal([]byte(row.CriteriaJSON), &eval.Criteria); err != nil {
+			return domain.Evaluation{}, fmt.Errorf("failed to unmarshal criteria JSON: %w", err)
+		}
+	}
+	return eval, nil
 }
 
 func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, error) {
@@ -292,6 +365,7 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 			ID:         row.ID,
 			ProjectID:  row.ProjectID,
 			JudgeID:    row.JudgeID,
+			Status:     row.Status,
 			TotalScore: row.TotalScore,
 			Comment:    row.Comment,
 			CreatedAt:  row.CreatedAt,

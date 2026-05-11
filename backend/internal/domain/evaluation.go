@@ -14,6 +14,7 @@ type Evaluation struct {
 	ID         string          `json:"id"`
 	ProjectID  string          `json:"project_id"`
 	JudgeID    string          `json:"judge_id"`
+	Status     string          `json:"status"` // "UNKNOWN", "SUCCESS", "RUNNING", "FAILED"
 	Criteria   []CriteriaScore `json:"criteria"`
 	TotalScore float64         `json:"total_score"`
 	Comment    string          `json:"comment"`
@@ -22,7 +23,9 @@ type Evaluation struct {
 
 type EvaluationRepository interface {
 	Save(eval Evaluation) error
+	Update(eval Evaluation) error
 	GetByProjectID(projectID string) ([]Evaluation, error)
+	GetEvaluationByID(id string) (Evaluation, error)
 }
 
 // Messaging Models (Pub/Sub)
