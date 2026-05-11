@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/moficodes/hackathon-judge/backend/internal/domain"
 )
@@ -137,6 +139,18 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 	}
 
 	taskID := "tsk_" + uuid.New().String()
+
+	// Save RUNNING evaluation
+	eval := domain.Evaluation{
+		ID:        taskID,
+		ProjectID: projectID,
+		JudgeID:   "system-agent",
+		Status:    "RUNNING",
+		CreatedAt: time.Now(),
+	}
+	if err := s.evalRepo.Save(eval); err != nil {
+		return "", fmt.Errorf("failed to save running evaluation: %w", err)
+	}
 
 	task := domain.JudgingTask{
 		TaskID:          taskID,
