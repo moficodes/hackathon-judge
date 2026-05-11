@@ -10,7 +10,6 @@ type Criterion struct {
 
 type Hackathon struct {
 	ID          string      `json:"id"`
-	Name        string      `json:"name"`
 	Title       string      `json:"title"`
 	Date        time.Time   `json:"date"`
 	Description string      `json:"description"`

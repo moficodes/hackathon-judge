@@ -37,7 +37,7 @@ func TestListHackathons(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &res)
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len(res), 1)
-	assert.Equal(t, "Hack1", res[0].Name)
+	assert.Equal(t, "Summer Hack", res[0].Title)
 }
 
 func TestListProjectsByHackathon(t *testing.T) {
