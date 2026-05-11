@@ -111,19 +111,24 @@ func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
 }
 
 type bqProject struct {
-	ID          string     `bigquery:"id"`
-	Name        string     `bigquery:"name"`
-	Title       string     `bigquery:"title"`
-	URL         string     `bigquery:"url"`
-	GitHubURL   string     `bigquery:"github_url"`
-	TeamName    string     `bigquery:"team_name"`
-	Document    string     `bigquery:"document"`
-	Date        civil.Date `bigquery:"date"`
-	HackathonID string     `bigquery:"hackathon_id"`
-	Score       float64    `bigquery:"score"`
+	ID          string             `bigquery:"id"`
+	Name        string             `bigquery:"name"`
+	Title       string             `bigquery:"title"`
+	URL         string             `bigquery:"url"`
+	GitHubURL   string             `bigquery:"github_url"`
+	TeamName    string             `bigquery:"team_name"`
+	Document    bigquery.NullString `bigquery:"document"`
+	Date        civil.Date         `bigquery:"date"`
+	HackathonID string             `bigquery:"hackathon_id"`
+	Score       float64            `bigquery:"score"`
 }
 
 func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
+	doc := ""
+	if bqP.Document.Valid {
+		doc = bqP.Document.StringVal
+	}
+
 	return domain.Project{
 		ID:          bqP.ID,
 		Name:        bqP.Name,
@@ -131,7 +136,7 @@ func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
 		URL:         bqP.URL,
 		GitHubURL:   bqP.GitHubURL,
 		TeamName:    bqP.TeamName,
-		Document:    bqP.Document,
+		Document:    doc,
 		Date:        bqP.Date.In(time.UTC),
 		HackathonID: bqP.HackathonID,
 		Score:       bqP.Score,
