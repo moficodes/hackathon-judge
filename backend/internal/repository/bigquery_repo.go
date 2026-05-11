@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigquery"
+	"cloud.google.com/go/civil"
 	"github.com/moficodes/hackathon-judge/backend/internal/domain"
 	"google.golang.org/api/iterator"
 )
@@ -107,4 +108,106 @@ func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
 	}
 
 	return r.mapBQHackathon(row)
+}
+
+type bqProject struct {
+	ID          string     `bigquery:"id"`
+	Name        string     `bigquery:"name"`
+	Title       string     `bigquery:"title"`
+	URL         string     `bigquery:"url"`
+	GitHubURL   string     `bigquery:"github_url"`
+	TeamName    string     `bigquery:"team_name"`
+	Document    string     `bigquery:"document"`
+	Date        civil.Date `bigquery:"date"`
+	HackathonID string     `bigquery:"hackathon_id"`
+	Score       float64    `bigquery:"score"`
+}
+
+func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
+	return domain.Project{
+		ID:          bqP.ID,
+		Name:        bqP.Name,
+		Title:       bqP.Title,
+		URL:         bqP.URL,
+		GitHubURL:   bqP.GitHubURL,
+		TeamName:    bqP.TeamName,
+		Document:    bqP.Document,
+		Date:        bqP.Date.In(time.UTC),
+		HackathonID: bqP.HackathonID,
+		Score:       bqP.Score,
+	}
+}
+
+func (r *BigQueryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.projects.projects` WHERE hackathon_id = @hackathon_id", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "hackathon_id", Value: hackathonID},
+	}
+	it, err := query.Read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read projects: %w", err)
+	}
+
+	var projects []domain.Project
+	for {
+		var row bqProject
+		err := it.Next(&row)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate projects: %w", err)
+		}
+		projects = append(projects, r.mapBQProject(row))
+	}
+	return projects, nil
+}
+
+func (r *BigQueryRepo) GetProjectByID(id string) (domain.Project, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.projects.projects` WHERE id = @id LIMIT 1", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "id", Value: id},
+	}
+	it, err := query.Read(ctx)
+	if err != nil {
+		return domain.Project{}, fmt.Errorf("failed to read project: %w", err)
+	}
+
+	var row bqProject
+	err = it.Next(&row)
+	if err == iterator.Done {
+		return domain.Project{}, fmt.Errorf("project not found")
+	}
+	if err != nil {
+		return domain.Project{}, fmt.Errorf("failed to iterate project: %w", err)
+	}
+
+	return r.mapBQProject(row), nil
+}
+
+func (r *BigQueryRepo) UpdateScore(projectID string, score float64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	query := r.client.Query(fmt.Sprintf("UPDATE `%s.projects.projects` SET score = @score WHERE id = @id", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "score", Value: score},
+		{Name: "id", Value: projectID},
+	}
+
+	job, err := query.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to run update query: %w", err)
+	}
+	status, err := job.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for update query: %w", err)
+	}
+	if status.Err() != nil {
+		return fmt.Errorf("update query failed: %w", status.Err())
+	}
+	return nil
 }
