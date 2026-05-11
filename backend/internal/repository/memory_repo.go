@@ -19,7 +19,6 @@ func NewMemoryRepo() *memoryRepo {
 		hackathons: []domain.Hackathon{
 			{
 				ID:     "1",
-				Name:   "Hack1",
 				Title:  "Summer Hack",
 				Status: "Active",
 				Criteria: []domain.Criterion{

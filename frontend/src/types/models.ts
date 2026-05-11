@@ -1,7 +1,6 @@
 // src/types/models.ts
 export interface Hackathon {
   id: string;
-  name: string;
   title: string;
   date: string;
   description: string;
