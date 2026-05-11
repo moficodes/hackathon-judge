@@ -9,13 +9,14 @@ type Criterion struct {
 }
 
 type Hackathon struct {
-	ID          string      `json:"id"`
-	Title       string      `json:"title"`
-	Date        time.Time   `json:"date"`
-	Description string      `json:"description"`
-	Goal        string      `json:"goal"`
-	Status      string      `json:"status"`
-	Criteria    []Criterion `json:"criteria"`
+	ID            string      `json:"id"`
+	Title         string      `json:"title"`
+	Date          time.Time   `json:"date"`
+	Description   string      `json:"description"`
+	Goal          string      `json:"goal"`
+	Status        string      `json:"status"`
+	Criteria      []Criterion `json:"criteria"`
+	BonusCriteria []Criterion `json:"bonus_criteria"`
 }
 
 type HackathonRepository interface {
