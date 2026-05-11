@@ -59,15 +59,55 @@ log_error() {
 # ------------------------------------------------------------------------------
 NON_INTERACTIVE=false
 
-# Parse arguments
+# Default toggles for each step
+RUN_APIS=true
+RUN_REGISTRY=true
+RUN_GKE=true
+RUN_PUBSUB=true
+RUN_BQ=true
+RUN_BUILD=true
+
+# Track if the user passed ANY positive execution flags
+HAS_POSITIVE_FLAG=false
+
+for arg in "$@"; do
+  case $arg in
+    --apis|--registry|--gke|--pubsub|--bq|--build)
+      HAS_POSITIVE_FLAG=true
+      ;;
+  esac
+done
+
+# If a positive flag was supplied, default all other steps to false
+if [ "$HAS_POSITIVE_FLAG" = "true" ]; then
+  RUN_APIS=false
+  RUN_REGISTRY=false
+  RUN_GKE=false
+  RUN_PUBSUB=false
+  RUN_BQ=false
+  RUN_BUILD=false
+fi
+
+# Parse all command-line arguments
 for arg in "$@"; do
   case $arg in
     --non-interactive)
       NON_INTERACTIVE=true
-      shift
       ;;
+    --apis) RUN_APIS=true ;;
+    --no-apis) RUN_APIS=false ;;
+    --registry) RUN_REGISTRY=true ;;
+    --no-registry) RUN_REGISTRY=false ;;
+    --gke) RUN_GKE=true ;;
+    --no-gke) RUN_GKE=false ;;
+    --pubsub) RUN_PUBSUB=true ;;
+    --no-pubsub) RUN_PUBSUB=false ;;
+    --bq) RUN_BQ=true ;;
+    --no-bq) RUN_BQ=false ;;
+    --build) RUN_BUILD=true ;;
+    --no-build) RUN_BUILD=false ;;
     *)
-      # Unknown option
+      # Silent ignore or warning for unknown options
       ;;
   esac
 done
@@ -107,14 +147,15 @@ prompt_var() {
 
 # Initialize config values from existing .env if it exists
 existing_GOOGLE_CLOUD_PROJECT=""
-existing_GOOGLE_CLOUD_REGION="us-central1"
-existing_ARTIFACT_REGISTRY_LOCATION="us-central1"
-existing_CLUSTER_NAME="hackathon-judge-cluster"
-existing_ARTIFACT_REPO_NAME="hackathon-judge-repo"
-existing_TASKS_TOPIC="judging-tasks"
-existing_RESULTS_TOPIC="judging-results"
-existing_TASKS_SUBSCRIPTION="judging-tasks-agent-sub"
-existing_RESULTS_SUB="judging-results-backend-sub"
+existing_GOOGLE_CLOUD_REGION=""
+existing_ARTIFACT_REGISTRY_LOCATION=""
+existing_CLUSTER_NAME=""
+existing_ARTIFACT_REPO_NAME=""
+existing_TASKS_TOPIC=""
+existing_RESULTS_TOPIC=""
+existing_TASKS_SUBSCRIPTION=""
+existing_RESULTS_SUB=""
+existing_BQ_DATASET=""
 
 if [ -f "$ENV_FILE" ]; then
   log_info "Found existing $ENV_FILE file. Parsing values..."
@@ -145,6 +186,7 @@ if [ -f "$ENV_FILE" ]; then
         RESULTS_TOPIC) existing_RESULTS_TOPIC="$var_val" ;;
         TASKS_SUBSCRIPTION) existing_TASKS_SUBSCRIPTION="$var_val" ;;
         RESULTS_SUB) existing_RESULTS_SUB="$var_val" ;;
+        BQ_DATASET) existing_BQ_DATASET="$var_val" ;;
       esac
     fi
   done < "$ENV_FILE"
@@ -160,7 +202,7 @@ is_val_complete() {
 
 # Check if .env is complete and contains no placeholders
 is_env_complete=true
-for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB; do
+for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB BQ_DATASET; do
   val=""
   eval "val=\${existing_$var:-}"
   if ! is_val_complete "$val"; then
@@ -181,6 +223,7 @@ if [ "$is_env_complete" = "true" ]; then
   RESULTS_TOPIC="$existing_RESULTS_TOPIC"
   TASKS_SUBSCRIPTION="$existing_TASKS_SUBSCRIPTION"
   RESULTS_SUB="$existing_RESULTS_SUB"
+  BQ_DATASET="$existing_BQ_DATASET"
 else
   if [ "$NON_INTERACTIVE" = "true" ]; then
     log_error "Incomplete configuration file '$ENV_FILE' and running in non-interactive mode."
@@ -216,56 +259,63 @@ else
   if is_val_complete "$existing_GOOGLE_CLOUD_REGION"; then
     GOOGLE_CLOUD_REGION="$existing_GOOGLE_CLOUD_REGION"
   else
-    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "$existing_GOOGLE_CLOUD_REGION"
+    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-us-central1}"
   fi
 
   # Registry Location
   if is_val_complete "$existing_ARTIFACT_REGISTRY_LOCATION"; then
     ARTIFACT_REGISTRY_LOCATION="$existing_ARTIFACT_REGISTRY_LOCATION"
   else
-    prompt_var "ARTIFACT_REGISTRY_LOCATION" "Artifact Registry Docker Location" "${existing_ARTIFACT_REGISTRY_LOCATION:-$GOOGLE_CLOUD_REGION}"
+    prompt_var "ARTIFACT_REGISTRY_LOCATION" "Artifact Registry Docker Location" "${existing_ARTIFACT_REGISTRY_LOCATION:-${GOOGLE_CLOUD_REGION:-us-central1}}"
   fi
 
   # Cluster Name
   if is_val_complete "$existing_CLUSTER_NAME"; then
     CLUSTER_NAME="$existing_CLUSTER_NAME"
   else
-    prompt_var "CLUSTER_NAME" "GKE Autopilot Cluster Name" "$existing_CLUSTER_NAME"
+    prompt_var "CLUSTER_NAME" "GKE Autopilot Cluster Name" "${existing_CLUSTER_NAME:-hackathon-judge-cluster}"
   fi
 
   # Repository Name
   if is_val_complete "$existing_ARTIFACT_REPO_NAME"; then
     ARTIFACT_REPO_NAME="$existing_ARTIFACT_REPO_NAME"
   else
-    prompt_var "ARTIFACT_REPO_NAME" "Artifact Registry Repository Name" "$existing_ARTIFACT_REPO_NAME"
+    prompt_var "ARTIFACT_REPO_NAME" "Artifact Registry Repository Name" "${existing_ARTIFACT_REPO_NAME:-hackathon-judge-repo}"
   fi
 
   # Tasks Topic
   if is_val_complete "$existing_TASKS_TOPIC"; then
     TASKS_TOPIC="$existing_TASKS_TOPIC"
   else
-    prompt_var "TASKS_TOPIC" "Pub/Sub Judging Tasks Topic Name" "$existing_TASKS_TOPIC"
+    prompt_var "TASKS_TOPIC" "Pub/Sub Judging Tasks Topic Name" "${existing_TASKS_TOPIC:-judging-tasks}"
   fi
 
   # Results Topic
   if is_val_complete "$existing_RESULTS_TOPIC"; then
     RESULTS_TOPIC="$existing_RESULTS_TOPIC"
   else
-    prompt_var "RESULTS_TOPIC" "Pub/Sub Judging Results Topic Name" "$existing_RESULTS_TOPIC"
+    prompt_var "RESULTS_TOPIC" "Pub/Sub Judging Results Topic Name" "${existing_RESULTS_TOPIC:-judging-results}"
   fi
 
   # Tasks Subscription
   if is_val_complete "$existing_TASKS_SUBSCRIPTION"; then
     TASKS_SUBSCRIPTION="$existing_TASKS_SUBSCRIPTION"
   else
-    prompt_var "TASKS_SUBSCRIPTION" "Agent Judging Tasks Subscription Name" "$existing_TASKS_SUBSCRIPTION"
+    prompt_var "TASKS_SUBSCRIPTION" "Agent Judging Tasks Subscription Name" "${existing_TASKS_SUBSCRIPTION:-judging-tasks-agent-sub}"
   fi
 
   # Results Subscription
   if is_val_complete "$existing_RESULTS_SUB"; then
     RESULTS_SUB="$existing_RESULTS_SUB"
   else
-    prompt_var "RESULTS_SUB" "Backend Judging Results Subscription Name" "$existing_RESULTS_SUB"
+    prompt_var "RESULTS_SUB" "Backend Judging Results Subscription Name" "${existing_RESULTS_SUB:-judging-results-backend-sub}"
+  fi
+
+  # BigQuery Dataset
+  if is_val_complete "$existing_BQ_DATASET"; then
+    BQ_DATASET="$existing_BQ_DATASET"
+  else
+    prompt_var "BQ_DATASET" "BigQuery Dataset Name" "${existing_BQ_DATASET:-hackathon_judge}"
   fi
 
   # Keep backup of old env just in case
@@ -295,6 +345,9 @@ TASKS_TOPIC=${TASKS_TOPIC}
 RESULTS_TOPIC=${RESULTS_TOPIC}
 TASKS_SUBSCRIPTION=${TASKS_SUBSCRIPTION}
 RESULTS_SUB=${RESULTS_SUB}
+
+# BigQuery Analytics Setup
+BQ_DATASET=${BQ_DATASET}
 EOF
 
   log_success "Successfully wrote $ENV_FILE configuration!"
@@ -323,6 +376,12 @@ log_step "2/8" "Google Cloud CLI & Authentication Check 🔍"
 if ! command -v gcloud &> /dev/null; then
   log_error "gcloud CLI is not installed."
   log_info "Please install it from: https://cloud.google.com/sdk/docs/install"
+  exit 1
+fi
+
+if ! command -v bq &> /dev/null; then
+  log_error "bq CLI (BigQuery command-line tool) is not installed."
+  log_info "Please ensure BigQuery tools are available (run 'gcloud components install bq')."
   exit 1
 fi
 
@@ -355,174 +414,255 @@ log_success "Project '$GOOGLE_CLOUD_PROJECT' is accessible and set active."
 # ------------------------------------------------------------------------------
 # Step 4: Enabling Google Cloud APIs
 # ------------------------------------------------------------------------------
-log_step "4/8" "Enabling Google Cloud APIs ⚡"
+if [ "$RUN_APIS" = "true" ]; then
+  log_step "4/8" "Enabling Google Cloud APIs ⚡"
 
-APIS_TO_ENABLE=(
-  "container.googleapis.com"            # Google Kubernetes Engine
-  "artifactregistry.googleapis.com"     # Artifact Registry
-  "cloudbuild.googleapis.com"           # Cloud Build
-  "pubsub.googleapis.com"               # Cloud Pub/Sub
-  "aiplatform.googleapis.com"           # Vertex AI (Essential for the judge agent)
-  "cloudresourcemanager.googleapis.com" # Cloud Resource Manager (Required for project metadata & IAM)
-  "iam.googleapis.com"                  # Identity and Access Management (IAM)
-)
+  APIS_TO_ENABLE=(
+    "container.googleapis.com"            # Google Kubernetes Engine
+    "artifactregistry.googleapis.com"     # Artifact Registry
+    "cloudbuild.googleapis.com"           # Cloud Build
+    "pubsub.googleapis.com"               # Cloud Pub/Sub
+    "aiplatform.googleapis.com"           # Vertex AI (Essential for the judge agent)
+    "cloudresourcemanager.googleapis.com" # Cloud Resource Manager (Required for project metadata & IAM)
+    "iam.googleapis.com"                  # Identity and Access Management (IAM)
+    "bigquery.googleapis.com"             # BigQuery (Essential for evaluations analytics)
+  )
 
-log_info "Enabling required services on new project. This might take a minute..."
-# Enabling APIs is idempotent and safe to run
-if ! gcloud services enable "${APIS_TO_ENABLE[@]}"; then
-  log_error "Failed to enable required Google Cloud APIs."
-  log_info "Please ensure billing is enabled on the project: '$GOOGLE_CLOUD_PROJECT'."
-  log_info "Verify by visiting: https://console.cloud.google.com/billing"
-  exit 1
+  log_info "Enabling required services on new project. This might take a minute..."
+  # Enabling APIs is idempotent and safe to run
+  if ! gcloud services enable "${APIS_TO_ENABLE[@]}"; then
+    log_error "Failed to enable required Google Cloud APIs."
+    log_info "Please ensure billing is enabled on the project: '$GOOGLE_CLOUD_PROJECT'."
+    log_info "Verify by visiting: https://console.cloud.google.com/billing"
+    exit 1
+  fi
+  log_success "All required Google Cloud APIs successfully enabled!"
+else
+  log_info "Skipping Step 4: Google Cloud APIs enablement (Bypassed by CLI flag)."
 fi
-log_success "All required Google Cloud APIs successfully enabled!"
 
 # ------------------------------------------------------------------------------
 # Step 5: Creating Artifact Registry Docker Repository
 # ------------------------------------------------------------------------------
-log_step "5/8" "Creating Artifact Registry Docker Repository 📦"
+if [ "$RUN_REGISTRY" = "true" ]; then
+  log_step "5/8" "Creating Artifact Registry Docker Repository 📦"
 
-log_info "Checking Artifact Registry repository: $ARTIFACT_REPO_NAME in $ARTIFACT_REGISTRY_LOCATION..."
-if ! gcloud artifacts repositories describe "$ARTIFACT_REPO_NAME" --location="$ARTIFACT_REGISTRY_LOCATION" &> /dev/null; then
-  log_info "Creating Artifact Registry Docker repository..."
-  if gcloud artifacts repositories create "$ARTIFACT_REPO_NAME" \
-      --repository-format=docker \
-      --location="$ARTIFACT_REGISTRY_LOCATION" \
-      --description="Docker repository for Hackathon Judge services"; then
-    log_success "Successfully created repository '$ARTIFACT_REPO_NAME'!"
+  log_info "Checking Artifact Registry repository: $ARTIFACT_REPO_NAME in $ARTIFACT_REGISTRY_LOCATION..."
+  if ! gcloud artifacts repositories describe "$ARTIFACT_REPO_NAME" --location="$ARTIFACT_REGISTRY_LOCATION" &> /dev/null; then
+    log_info "Creating Artifact Registry Docker repository..."
+    if gcloud artifacts repositories create "$ARTIFACT_REPO_NAME" \
+        --repository-format=docker \
+        --location="$ARTIFACT_REGISTRY_LOCATION" \
+        --description="Docker repository for Hackathon Judge services"; then
+      log_success "Successfully created repository '$ARTIFACT_REPO_NAME'!"
+    else
+      log_error "Failed to create Artifact Registry repository."
+      exit 1
+    fi
   else
-    log_error "Failed to create Artifact Registry repository."
-    exit 1
+    log_success "Artifact Registry repository '$ARTIFACT_REPO_NAME' already exists in $ARTIFACT_REGISTRY_LOCATION."
   fi
 else
-  log_success "Artifact Registry repository '$ARTIFACT_REPO_NAME' already exists in $ARTIFACT_REGISTRY_LOCATION."
+  log_info "Skipping Step 5: Artifact Registry repository configuration (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------
 # Step 6: Creating GKE Autopilot Cluster
 # ------------------------------------------------------------------------------
-log_step "6/8" "Creating GKE Autopilot Cluster 🚀"
+if [ "$RUN_GKE" = "true" ]; then
+  log_step "6/8" "Creating GKE Autopilot Cluster 🚀"
 
-log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
-if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
-  log_warning "GKE Autopilot Cluster does not exist. Initiating creation..."
-  log_info "NOTE: GKE Autopilot cluster creation usually takes 5 to 10 minutes. Please be patient."
-  
-  if gcloud container clusters create-auto "$CLUSTER_NAME" \
-      --region="$GOOGLE_CLOUD_REGION" \
-      --project="$GOOGLE_CLOUD_PROJECT"; then
-    log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully created!"
+  log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
+  if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
+    log_warning "GKE Autopilot Cluster does not exist. Initiating creation..."
+    log_info "NOTE: GKE Autopilot cluster creation usually takes 5 to 10 minutes. Please be patient."
+    
+    if gcloud container clusters create-auto "$CLUSTER_NAME" \
+        --region="$GOOGLE_CLOUD_REGION" \
+        --project="$GOOGLE_CLOUD_PROJECT"; then
+      log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully created!"
+    else
+      log_error "Failed to create GKE cluster. Please check your quota settings or regional resources."
+      exit 1
+    fi
   else
-    log_error "Failed to create GKE cluster. Please check your quota settings or regional resources."
-    exit 1
+    log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
   fi
 else
-  log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
+  log_info "Skipping Step 6: GKE Autopilot cluster configuration (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------
 # Step 7: Configuring Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
-log_step "7/8" "Configuring Pub/Sub Topics & Subscriptions 📨"
+if [ "$RUN_PUBSUB" = "true" ]; then
+  log_step "7/9" "Configuring Pub/Sub Topics & Subscriptions 📨"
 
-# Robust function to create topic
-ensure_pubsub_topic() {
-  local topic=$1
-  log_info "Checking topic: $topic"
-  if ! gcloud pubsub topics describe "$topic" &> /dev/null; then
-    log_info "Creating Pub/Sub topic: $topic"
-    gcloud pubsub topics create "$topic"
-    log_success "Topic '$topic' created!"
-  else
-    log_success "Topic '$topic' already exists."
-  fi
-}
+  # Robust function to create topic
+  ensure_pubsub_topic() {
+    local topic=$1
+    log_info "Checking topic: $topic"
+    if ! gcloud pubsub topics describe "$topic" &> /dev/null; then
+      log_info "Creating Pub/Sub topic: $topic"
+      gcloud pubsub topics create "$topic"
+      log_success "Topic '$topic' created!"
+    else
+      log_success "Topic '$topic' already exists."
+    fi
+  }
 
-# Robust function to create subscription bound to topic
-ensure_pubsub_sub() {
-  local sub=$1
-  local topic=$2
-  log_info "Checking subscription: $sub"
-  if ! gcloud pubsub subscriptions describe "$sub" &> /dev/null; then
-    log_info "Creating Pub/Sub subscription '$sub' for topic '$topic'..."
-    gcloud pubsub subscriptions create "$sub" --topic="$topic"
-    log_success "Subscription '$sub' created!"
-  else
-    log_success "Subscription '$sub' already exists."
-  fi
-}
+  # Robust function to create subscription bound to topic
+  ensure_pubsub_sub() {
+    local sub=$1
+    local topic=$2
+    log_info "Checking subscription: $sub"
+    if ! gcloud pubsub subscriptions describe "$sub" &> /dev/null; then
+      log_info "Creating Pub/Sub subscription '$sub' for topic '$topic'..."
+      gcloud pubsub subscriptions create "$sub" --topic="$topic"
+      log_success "Subscription '$sub' created!"
+    else
+      log_success "Subscription '$sub' already exists."
+    fi
+  }
 
-# Configure topics
-ensure_pubsub_topic "$TASKS_TOPIC"
-ensure_pubsub_topic "$RESULTS_TOPIC"
+  # Configure topics
+  ensure_pubsub_topic "$TASKS_TOPIC"
+  ensure_pubsub_topic "$RESULTS_TOPIC"
 
-# Configure subscriptions
-ensure_pubsub_sub "$TASKS_SUBSCRIPTION" "$TASKS_TOPIC"
-ensure_pubsub_sub "$RESULTS_SUB" "$RESULTS_TOPIC"
-
-# ------------------------------------------------------------------------------
-# Step 8: Triggering Service Builds with Cloud Build
-# ------------------------------------------------------------------------------
-log_step "8/8" "Triggering Service Builds with Cloud Build 🛠️"
-
-# Detect Git status and determine target tag
-COMMIT_SHA="latest"
-IS_DIRTY=false
-
-if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
-  # Check if git repository has any uncommitted changes (tracked or untracked)
-  if [ -n "$(git status --porcelain)" ]; then
-    log_warning "Git repository has uncommitted changes (dirty state)."
-    COMMIT_SHA="dirty-$(date +%s)"
-    IS_DIRTY=true
-  else
-    COMMIT_SHA=$(git rev-parse --short HEAD)
-    log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
-  fi
+  # Configure subscriptions
+  ensure_pubsub_sub "$TASKS_SUBSCRIPTION" "$TASKS_TOPIC"
+  ensure_pubsub_sub "$RESULTS_SUB" "$RESULTS_TOPIC"
 else
-  log_warning "Git not detected or repository not initialized. Generating timestamp tag."
-  COMMIT_SHA="manual-$(date +%s)"
-  IS_DIRTY=true # Non-git workspaces always trigger rebuild
+  log_info "Skipping Step 7: Pub/Sub topics and subscriptions configuration (Bypassed by CLI flag)."
 fi
 
-log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
-log_info "Registry Repository: $ARTIFACT_REPO_NAME"
-log_info "Target Tag (SHA):    $COMMIT_SHA"
+# ------------------------------------------------------------------------------
+# Step 8: Configuring BigQuery Datasets & Tables
+# ------------------------------------------------------------------------------
+if [ "$RUN_BQ" = "true" ]; then
+  log_step "8/9" "Configuring BigQuery Datasets & Tables 📊"
 
-IMAGES_TO_CHECK=("backend" "frontend" "agent" "agent-sandbox")
-ALL_IMAGES_EXIST=true
-
-if [ "$IS_DIRTY" = "false" ]; then
-  log_info "Checking if all required service images already exist in Artifact Registry..."
-  for img in "${IMAGES_TO_CHECK[@]}"; do
-    image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
-    log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
-    
-    if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
-      log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
+  log_info "Checking BigQuery dataset: $BQ_DATASET..."
+  if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET" &>/dev/null; then
+    log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
+    if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
+        --location="$GOOGLE_CLOUD_REGION" \
+        --dataset "$GOOGLE_CLOUD_PROJECT:$BQ_DATASET"; then
+      log_success "Dataset '$BQ_DATASET' successfully created!"
     else
-      log_warning "    Image '${img}' with tag '${COMMIT_SHA}' is missing."
-      ALL_IMAGES_EXIST=false
-      break
+      log_error "Failed to create BigQuery dataset."
+      exit 1
+    fi
+  else
+    log_success "BigQuery dataset '$BQ_DATASET' already exists."
+  fi
+
+  # Map CSV files to their BigQuery tables
+  CSV_TABLE_MAP=(
+    "hackathons.csv:hackathons"
+    "projects.csv:projects"
+    "evaluations.csv:evaluations"
+  )
+
+  for map in "${CSV_TABLE_MAP[@]}"; do
+    csv_file="${map%%:*}"
+    table_name="${map##*:}"
+    
+    log_info "Checking table: $table_name in dataset $BQ_DATASET..."
+    
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET.$table_name" &>/dev/null; then
+      if [ -f "$csv_file" ]; then
+        log_info "Ingesting and creating table '$table_name' from CSV '$csv_file'..."
+        # Run bq load dynamically detecting schema with autodetect, using pipe | separator
+        if bq --project_id="$GOOGLE_CLOUD_PROJECT" load \
+            --source_format=CSV \
+            --field_delimiter="|" \
+            --autodetect \
+            "$BQ_DATASET.$table_name" \
+            "$csv_file"; then
+          log_success "Table '$table_name' successfully created and populated!"
+        else
+          log_error "Failed to load CSV data into table '$table_name'."
+          exit 1
+        fi
+      else
+        log_warning "CSV file '$csv_file' not found at root. Skipping table '$table_name' load."
+      fi
+    else
+      log_success "Table '$table_name' already exists. Skipping ingestion."
     fi
   done
 else
-  ALL_IMAGES_EXIST=false
+  log_info "Skipping Step 8: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
 fi
 
-if [ "$ALL_IMAGES_EXIST" = "true" ]; then
-  log_success "All required images already exist in Artifact Registry with tag '$COMMIT_SHA'."
-  log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
-else
-  log_info "Triggering Google Cloud Build to compile and package all services..."
-  if gcloud builds submit --config cloudbuild.yaml . \
-      --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
-    log_success "Cloud Build completed successfully! All containers pushed to registry."
+# ------------------------------------------------------------------------------
+# Step 9: Triggering Service Builds with Cloud Build
+# ------------------------------------------------------------------------------
+if [ "$RUN_BUILD" = "true" ]; then
+  log_step "9/9" "Triggering Service Builds with Cloud Build 🛠️"
+
+  # Detect Git status and determine target tag
+  COMMIT_SHA="latest"
+  IS_DIRTY=false
+
+  if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
+    # Check if git repository has any uncommitted changes (tracked or untracked)
+    if [ -n "$(git status --porcelain)" ]; then
+      log_warning "Git repository has uncommitted changes (dirty state)."
+      COMMIT_SHA="dirty-$(date +%s)"
+      IS_DIRTY=true
+    else
+      COMMIT_SHA=$(git rev-parse --short HEAD)
+      log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
+    fi
   else
-    log_error "Cloud Build submission failed."
-    log_info "Please check the Cloud Build logs above for specific compilation/Docker errors."
-    exit 1
+    log_warning "Git not detected or repository not initialized. Generating timestamp tag."
+    COMMIT_SHA="manual-$(date +%s)"
+    IS_DIRTY=true # Non-git workspaces always trigger rebuild
   fi
+
+  log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
+  log_info "Registry Repository: $ARTIFACT_REPO_NAME"
+  log_info "Target Tag (SHA):    $COMMIT_SHA"
+
+  IMAGES_TO_CHECK=("backend" "frontend" "agent" "agent-sandbox")
+  ALL_IMAGES_EXIST=true
+
+  if [ "$IS_DIRTY" = "false" ]; then
+    log_info "Checking if all required service images already exist in Artifact Registry..."
+    for img in "${IMAGES_TO_CHECK[@]}"; do
+      image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
+      log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
+      
+      if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
+        log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
+      else
+        log_warning "    Image '${img}' with tag '${COMMIT_SHA}' is missing."
+        ALL_IMAGES_EXIST=false
+        break
+      fi
+    done
+  else
+    ALL_IMAGES_EXIST=false
+  fi
+
+  if [ "$ALL_IMAGES_EXIST" = "true" ]; then
+    log_success "All required images already exist in Artifact Registry with tag '$COMMIT_SHA'."
+    log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
+  else
+    log_info "Triggering Google Cloud Build to compile and package all services..."
+    if gcloud builds submit --config cloudbuild.yaml . \
+        --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
+      log_success "Cloud Build completed successfully! All containers pushed to registry."
+    else
+      log_error "Cloud Build submission failed."
+      log_info "Please check the Cloud Build logs above for specific compilation/Docker errors."
+      exit 1
+    fi
+  fi
+else
+  log_info "Skipping Step 9: Cloud Build container packaging (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------

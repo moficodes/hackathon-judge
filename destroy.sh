@@ -57,7 +57,7 @@ log_error() {
 # Step 1: Load Environment Config
 # ------------------------------------------------------------------------------
 log_header "GOOGLE CLOUD Infrastructure Destruction & Cleanup System"
-log_step "1/5" "Loading Environment Configuration ⚙️"
+log_step "1/6" "Loading Environment Configuration ⚙️"
 
 ENV_FILE=".env"
 
@@ -71,7 +71,7 @@ log_info "Sourcing configuration variables from $ENV_FILE..."
 export $(grep -v '^#' "$ENV_FILE" | xargs)
 
 # Validate essential variables
-if [ -z "${GOOGLE_CLOUD_PROJECT:-}" ] || [ -z "${GOOGLE_CLOUD_REGION:-}" ] || [ -z "${CLUSTER_NAME:-}" ]; then
+if [ -z "${GOOGLE_CLOUD_PROJECT:-}" ] || [ -z "${GOOGLE_CLOUD_REGION:-}" ] || [ -z "${CLUSTER_NAME:-}" ] || [ -z "${BQ_DATASET:-}" ]; then
   log_error "Incomplete configurations found in $ENV_FILE."
   exit 1
 fi
@@ -80,6 +80,7 @@ log_info "Target Infrastructure Details to destroy:"
 echo "  Project: ${GOOGLE_CLOUD_PROJECT}"
 echo "  Region:  ${GOOGLE_CLOUD_REGION}"
 echo "  Cluster: ${CLUSTER_NAME}"
+echo "  Dataset: ${BQ_DATASET}"
 
 # ------------------------------------------------------------------------------
 # User Safety Warning Prompt
@@ -89,6 +90,7 @@ echo -e "${RED}This script will PERMANENTLY DELETE all provisioned infrastructur
 echo -e "  - GKE Autopilot Cluster: ${CLUSTER_NAME}"
 echo -e "  - Artifact Registry Repo: ${ARTIFACT_REPO_NAME}"
 echo -e "  - Pub/Sub Topics & Subscriptions"
+echo -e "  - BigQuery Dataset & Tables: ${BQ_DATASET}"
 echo -e "${RED}This action is completely irreversible!${NC}\n"
 
 read -p "Are you absolutely sure you want to proceed? Type 'DESTROY' to confirm: " confirmation
@@ -106,7 +108,7 @@ gcloud config set project "$GOOGLE_CLOUD_PROJECT"
 # ------------------------------------------------------------------------------
 # Step 2: Delete Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
-log_step "2/5" "Deleting Pub/Sub topics and subscriptions 📨"
+log_step "2/6" "Deleting Pub/Sub topics and subscriptions 📨"
 
 delete_pubsub_sub() {
   local sub=$1
@@ -143,7 +145,7 @@ delete_pubsub_topic "${RESULTS_TOPIC:-}"
 # ------------------------------------------------------------------------------
 # Step 3: Delete GKE Autopilot Cluster
 # ------------------------------------------------------------------------------
-log_step "3/5" "Deleting GKE Autopilot Cluster 🚀"
+log_step "3/6" "Deleting GKE Autopilot Cluster 🚀"
 
 log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME..."
 if gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
@@ -165,7 +167,7 @@ fi
 # ------------------------------------------------------------------------------
 # Step 4: Delete Artifact Registry
 # ------------------------------------------------------------------------------
-log_step "4/5" "Deleting Artifact Registry Repository 📦"
+log_step "4/6" "Deleting Artifact Registry Repository 📦"
 
 log_info "Checking Artifact Registry repository: $ARTIFACT_REPO_NAME..."
 if gcloud artifacts repositories describe "$ARTIFACT_REPO_NAME" --location="$ARTIFACT_REGISTRY_LOCATION" &> /dev/null; then
@@ -183,9 +185,27 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 5: Environment Clean up
+# Step 5: Delete BigQuery Dataset & Tables
 # ------------------------------------------------------------------------------
-log_step "5/5" "Removing Configuration File 🧹"
+log_step "5/6" "Deleting BigQuery Dataset & Tables 📊"
+
+log_info "Checking BigQuery dataset: $BQ_DATASET..."
+if bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET" &>/dev/null; then
+  log_warning "Deleting BigQuery dataset '$BQ_DATASET' and all its tables recursively..."
+  if bq --project_id="$GOOGLE_CLOUD_PROJECT" rm -r -f "$GOOGLE_CLOUD_PROJECT:$BQ_DATASET"; then
+    log_success "BigQuery dataset '$BQ_DATASET' and tables successfully deleted!"
+  else
+    log_error "Failed to delete BigQuery dataset."
+    exit 1
+  fi
+else
+  log_info "BigQuery dataset '$BQ_DATASET' does not exist. Skipping."
+fi
+
+# ------------------------------------------------------------------------------
+# Step 6: Environment Clean up
+# ------------------------------------------------------------------------------
+log_step "6/6" "Removing Configuration File 🧹"
 
 read -p "Do you want to remove the local $ENV_FILE file as well? [y/N]: " remove_env
 
