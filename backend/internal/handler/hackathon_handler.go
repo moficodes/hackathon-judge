@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"log"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/moficodes/hackathon-judge/backend/internal/service"
-	"net/http"
 )
 
 type HackathonHandler struct {
@@ -27,6 +29,7 @@ func (h *HackathonHandler) RegisterRoutes(r *gin.Engine) {
 func (h *HackathonHandler) GetHackathons(c *gin.Context) {
 	res, err := h.svc.ListHackathons()
 	if err != nil {
+		log.Printf("[ERROR] GetHackathons failed: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -37,6 +40,7 @@ func (h *HackathonHandler) GetProjects(c *gin.Context) {
 	id := c.Param("id")
 	res, err := h.svc.ListProjectsByHackathon(id)
 	if err != nil {
+		log.Printf("[ERROR] GetProjects failed for hackathon %s: %v\n", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -49,9 +53,11 @@ func (h *HackathonHandler) GetEvaluations(c *gin.Context) {
 	if err != nil {
 		// Use a simple string check to determine if the project wasn't found
 		if err.Error() == "failed to get project: project not found" {
+			log.Printf("[WARNING] GetEvaluations project not found: %s\n", id)
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 			return
 		}
+		log.Printf("[ERROR] GetEvaluations failed for project %s: %v\n", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -62,6 +68,7 @@ func (h *HackathonHandler) TriggerJudging(c *gin.Context) {
 	id := c.Param("id")
 	taskID, err := h.svc.TriggerJudging(id)
 	if err != nil {
+		log.Printf("[ERROR] TriggerJudging failed for project %s: %v\n", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

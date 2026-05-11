@@ -31,8 +31,9 @@ export interface Evaluation {
   id: string;
   project_id: string;
   judge_id: string;
-  criteria: CriteriaScore[];
+  status: string; // 'UNKNOWN' | 'RUNNING' | 'SUCCESS' | 'FAILED'
+  criteria?: CriteriaScore[];
   total_score: number;
-  comment: string;
+  comment?: string;
   created_at: string;
 }

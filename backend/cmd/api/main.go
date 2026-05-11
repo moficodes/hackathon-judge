@@ -47,30 +47,6 @@ func main() {
 		publisher = nil
 	}
 
-	subscriber, err := pubsub.NewGoogleResultSubscriber(projectID, subID)
-	if err != nil {
-		log.Printf("Warning: failed to initialize PubSub subscriber: %v. Result listening disabled.", err)
-	} else {
-		go func() {
-			log.Println("Starting background result subscriber...")
-			err := subscriber.Start(context.Background(), func(res domain.JudgingResult) error {
-				log.Printf("--- RECEIVED JUDGING RESULT ---")
-				log.Printf("Task ID: %s", res.TaskID)
-				log.Printf("Status: %s", res.Status)
-				if res.Status == "error" && res.ErrorMessage != nil {
-					log.Printf("Error: %s", *res.ErrorMessage)
-				}
-				log.Printf("Total Score: %.2f", res.TotalScore)
-				log.Printf("Comments: %s", res.OverallComments)
-				log.Printf("-------------------------------")
-				return nil
-			})
-			if err != nil {
-				log.Printf("Subscriber stopped with error: %v", err)
-			}
-		}()
-	}
-
 	var hackathonRepo domain.HackathonRepository
 	var projectRepo domain.ProjectRepository
 	var evalRepo domain.EvaluationRepository
@@ -88,6 +64,68 @@ func main() {
 		hackathonRepo = bqRepo
 		projectRepo = bqRepo
 		evalRepo = bqRepo
+	}
+
+	subscriber, err := pubsub.NewGoogleResultSubscriber(projectID, subID)
+	if err != nil {
+		log.Printf("Warning: failed to initialize PubSub subscriber: %v. Result listening disabled.", err)
+	} else {
+		go func() {
+			log.Println("Starting background result subscriber...")
+			err := subscriber.Start(context.Background(), func(res domain.JudgingResult) error {
+				log.Printf("--- RECEIVED JUDGING RESULT ---")
+				log.Printf("Task ID: %s", res.TaskID)
+				log.Printf("Status: %s", res.Status)
+				
+				eval, err := evalRepo.GetEvaluationByID(res.TaskID)
+				if err != nil {
+					log.Printf("Evaluation with ID %s not found: %v", res.TaskID, err)
+					return err
+				}
+
+				if res.Status == "error" {
+					eval.Status = "FAILED"
+					if res.ErrorMessage != nil {
+						eval.Comment = *res.ErrorMessage
+					}
+				} else {
+					eval.Status = "SUCCESS"
+					eval.Criteria = res.Scores
+					eval.TotalScore = res.TotalScore
+					eval.Comment = res.OverallComments
+				}
+
+				if err := evalRepo.Update(eval); err != nil {
+					log.Printf("Failed to update evaluation %s: %v", res.TaskID, err)
+					return err
+				}
+
+				if eval.Status == "SUCCESS" {
+					evals, err := evalRepo.GetByProjectID(eval.ProjectID)
+					if err == nil {
+						var total float64
+						var count int
+						for _, e := range evals {
+							if e.Status == "SUCCESS" {
+								total += e.TotalScore
+								count++
+							}
+						}
+						if count > 0 {
+							average := total / float64(count)
+							projectRepo.UpdateScore(eval.ProjectID, average)
+						}
+					}
+				}
+
+				log.Printf("Successfully processed result for task %s", res.TaskID)
+				log.Printf("-------------------------------")
+				return nil
+			})
+			if err != nil {
+				log.Printf("Subscriber stopped with error: %v", err)
+			}
+		}()
 	}
 
 	svc := service.NewHackathonService(hackathonRepo, projectRepo, evalRepo, publisher)
