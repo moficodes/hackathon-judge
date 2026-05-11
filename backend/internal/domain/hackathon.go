@@ -6,6 +6,7 @@ type Criterion struct {
 	Name        string  `json:"name"`
 	Weight      float64 `json:"weight"`
 	Description string  `json:"description"`
+	MaxScore    float64 `json:"max_score"`
 }
 
 type Hackathon struct {

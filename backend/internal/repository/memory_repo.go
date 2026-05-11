@@ -29,9 +29,9 @@ func NewMemoryRepo() *memoryRepo {
 					{Name: "Pitch & Demo", Weight: 0.1, Description: "Quality of the presentation and live demonstration.\n\n**Low (1-2):** The team spent too much time on the technical stack and forgot to show the actual product.\n**High (4-5):** The team clearly demonstrated a \"use case.\" They showed exactly how a user's life is better after using their tool."},
 				},
 				BonusCriteria: []domain.Criterion{
-					{Name: "Clean Code", Weight: 2, Description: "Repository is well-documented with a clear README."},
-					{Name: "Accessibility", Weight: 1, Description: "Project considers screen readers, high contrast, or keyboard-only navigation."},
-					{Name: "Wow Factor", Weight: 2, Description: "A specific feature that made the judges say \"Wait, how did they build that in 24 hours?\""},
+					{Name: "Clean Code", Weight: 2, Description: "Repository is well-documented with a clear README.", MaxScore: 2},
+					{Name: "Accessibility", Weight: 1, Description: "Project considers screen readers, high contrast, or keyboard-only navigation.", MaxScore: 1},
+					{Name: "Wow Factor", Weight: 2, Description: "A specific feature that made the judges say \"Wait, how did they build that in 24 hours?\"", MaxScore: 2},
 				},
 			},
 		},
