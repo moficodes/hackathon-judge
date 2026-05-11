@@ -38,6 +38,15 @@ export default function ProjectDetail() {
                   <span className="text-sm text-gray-500 uppercase tracking-wide">Judge ID</span>
                   <p className="font-mono">{e.judge_id}</p>
                 </div>
+                <div>
+                  <span className="text-sm text-gray-500 uppercase tracking-wide">Status</span>
+                  <p className="font-semibold mt-1">
+                    {e.status === 'RUNNING' && <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">RUNNING</span>}
+                    {e.status === 'SUCCESS' && <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">SUCCESS</span>}
+                    {e.status === 'FAILED' && <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">FAILED</span>}
+                    {!['RUNNING', 'SUCCESS', 'FAILED'].includes(e.status) && <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">{e.status || 'UNKNOWN'}</span>}
+                  </p>
+                </div>
                 <div className="text-right">
                   <span className="text-sm text-gray-500 uppercase tracking-wide">Total Score</span>
                   <p className="text-2xl font-bold text-blue-600">{e.total_score}</p>
