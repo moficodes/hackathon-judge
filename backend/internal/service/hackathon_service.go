@@ -54,10 +54,20 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 	var evalTotal float64
 	for _, cs := range eval.Criteria {
 		weight := 0.0
+		// Check standard criteria
 		for _, hc := range hackathon.Criteria {
 			if hc.Name == cs.Name {
 				weight = hc.Weight
 				break
+			}
+		}
+		// If not found, check bonus criteria
+		if weight == 0.0 {
+			for _, bc := range hackathon.BonusCriteria {
+				if bc.Name == cs.Name {
+					weight = bc.Weight
+					break
+				}
 			}
 		}
 		evalTotal += cs.Score * weight
@@ -101,7 +111,14 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 		scoringCriteria = append(scoringCriteria, domain.ScoringCriteria{
 			Name:     c.Name,
 			Weight:   c.Weight,
-			MaxScore: 10.0, // Assuming 10 for now
+			MaxScore: c.MaxScore,
+		})
+	}
+	for _, c := range hackathon.BonusCriteria {
+		scoringCriteria = append(scoringCriteria, domain.ScoringCriteria{
+			Name:     c.Name,
+			Weight:   c.Weight,
+			MaxScore: c.MaxScore,
 		})
 	}
 
