@@ -82,3 +82,24 @@ func TestListEvaluationsByProject(t *testing.T) {
 	assert.Equal(t, "e1", res[0].ID)
 	assert.Equal(t, 2.05, res[0].TotalScore)
 }
+
+func TestListEvaluationsByProject_Empty(t *testing.T) {
+	r, _ := setupRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/api/projects/p1/evaluations", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "[]", w.Body.String())
+}
+
+func TestListEvaluationsByProject_NotFound(t *testing.T) {
+	r, _ := setupRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/api/projects/nonexistent/evaluations", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
