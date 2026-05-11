@@ -58,7 +58,8 @@ func (r *BigQueryRepo) mapBQHackathon(bqH bqHackathon) (domain.Hackathon, error)
 }
 
 func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathons.hackathons`", r.projectID))
 	it, err := query.Read(ctx)
 	if err != nil {
@@ -77,7 +78,7 @@ func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
 		}
 		h, err := r.mapBQHackathon(row)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to map hackathon row: %w", err)
 		}
 		hackathons = append(hackathons, h)
 	}
@@ -85,7 +86,8 @@ func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
 }
 
 func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathons.hackathons` WHERE id = @id LIMIT 1", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
