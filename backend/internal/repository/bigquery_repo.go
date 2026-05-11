@@ -211,3 +211,93 @@ func (r *BigQueryRepo) UpdateScore(projectID string, score float64) error {
 	}
 	return nil
 }
+
+type bqEvaluation struct {
+	ID           string    `bigquery:"id"`
+	ProjectID    string    `bigquery:"project_id"`
+	JudgeID      string    `bigquery:"judge_id"`
+	TotalScore   float64   `bigquery:"total_score"`
+	Comment      string    `bigquery:"comment"`
+	CreatedAt    time.Time `bigquery:"created_at"`
+	CriteriaJSON string    `bigquery:"criteria_json"`
+}
+
+func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	criteriaBytes, err := json.Marshal(eval.Criteria)
+	if err != nil {
+		return fmt.Errorf("failed to marshal criteria: %w", err)
+	}
+
+	if eval.CreatedAt.IsZero() {
+		eval.CreatedAt = time.Now()
+	}
+
+	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.evaluations.evaluations` (id, project_id, judge_id, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "id", Value: eval.ID},
+		{Name: "project_id", Value: eval.ProjectID},
+		{Name: "judge_id", Value: eval.JudgeID},
+		{Name: "total_score", Value: eval.TotalScore},
+		{Name: "comment", Value: eval.Comment},
+		{Name: "created_at", Value: eval.CreatedAt},
+		{Name: "criteria_json", Value: string(criteriaBytes)},
+	}
+
+	job, err := query.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to run insert query: %w", err)
+	}
+	status, err := job.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for insert query: %w", err)
+	}
+	if status.Err() != nil {
+		return fmt.Errorf("insert query failed: %w", status.Err())
+	}
+	return nil
+}
+
+func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.evaluations.evaluations` WHERE project_id = @project_id", r.projectID))
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "project_id", Value: projectID},
+	}
+	it, err := query.Read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read evaluations: %w", err)
+	}
+
+	var evaluations []domain.Evaluation
+	for {
+		var row bqEvaluation
+		err := it.Next(&row)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate evaluations: %w", err)
+		}
+
+		eval := domain.Evaluation{
+			ID:         row.ID,
+			ProjectID:  row.ProjectID,
+			JudgeID:    row.JudgeID,
+			TotalScore: row.TotalScore,
+			Comment:    row.Comment,
+			CreatedAt:  row.CreatedAt,
+		}
+
+		if row.CriteriaJSON != "" {
+			if err := json.Unmarshal([]byte(row.CriteriaJSON), &eval.Criteria); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal criteria JSON: %w", err)
+			}
+		}
+		evaluations = append(evaluations, eval)
+	}
+	return evaluations, nil
+}
