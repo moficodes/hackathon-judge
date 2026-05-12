@@ -1,0 +1,26 @@
+.git
+.gitignore
+.gcloudignore
+.dockerignore
+
+# Dependencies and Build
+node_modules
+dist
+dist-ssr
+*.local
+
+# Testing
+playwright-report/
+test-results/
+coverage/
+
+# IDEs
+.vscode/
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
