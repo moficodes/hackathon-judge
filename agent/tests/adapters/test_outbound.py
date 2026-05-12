@@ -55,6 +55,36 @@ async def test_adk_agent_adapter(mock_runner_cls):
     assert len(res.scores) == 1
     assert res.scores[0].name == "Innovation"
 
+def test_evaluate_repository_tool_registration():
+    adapter = ADKAgentAdapter()
+    from src.adapters.outbound.adk_agent import evaluate_repository
+    assert evaluate_repository in adapter.agent.tools
+
+@patch('src.adapters.outbound.adk_agent.SandboxClient')
+def test_evaluate_repository_execution(mock_sandbox_client_cls):
+    # Setup mock for manual instantiation
+    mock_client = MagicMock()
+    mock_sandbox_client_cls.return_value = mock_client
+    
+    mock_sandbox = MagicMock()
+    mock_sandbox.name = "test-sandbox"
+    mock_client.create_sandbox.return_value = mock_sandbox
+    
+    # Mocking successful commands and file reads
+    mock_sandbox.commands.run.return_value = MagicMock(exit_code=0)
+    mock_sandbox.files.read.return_value = '{"total_score": 10}'
+
+    from src.adapters.outbound.adk_agent import evaluate_repository
+    result = evaluate_repository("https://github.com/test/repo", "# Criteria")
+
+    
+    assert "total_score" in result
+    mock_client.create_sandbox.assert_called_once_with(template="sandbox-hackathon-judge-template", namespace="hackathon-judge")
+    mock_sandbox.commands.run.assert_any_call("git clone https://github.com/test/repo repo")
+    mock_sandbox.files.write.assert_called_once_with("criteria.md", "# Criteria")
+    mock_sandbox.files.read.assert_called_once_with("evaluation.json")
+    mock_client.delete_sandbox.assert_called_once_with("test-sandbox")
+
 @pytest.mark.asyncio
 async def test_mock_publisher():
     pub = MockPubSubPublisherAdapter()

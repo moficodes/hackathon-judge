@@ -2,6 +2,7 @@
 from src.core.ports.agent_service import AgentService
 from src.core.models.message import AgentRequest, AgentResponse, CategoryScore
 import asyncio
+import os
 
 from google.adk.agents import Agent
 from google.adk.runners import Runner
@@ -9,6 +10,51 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 from typing import List
+from k8s_agent_sandbox import SandboxClient
+
+def evaluate_repository(github_url: str, judging_criteria: str) -> str:
+    """
+    Clones a repository into a secure sandbox and uses an autonomous agent to evaluate it 
+    against the provided judging criteria.
+    
+    Args:
+        github_url: The URL of the GitHub repository to clone.
+        judging_criteria: A markdown formatted string containing the judging criteria and rubric.
+        
+    Returns:
+        A JSON string containing the evaluation results.
+    """
+    template = os.getenv("SANDBOX_TEMPLATE", "sandbox-hackathon-judge-template")
+    namespace = os.getenv("SANDBOX_NAMESPACE", "hackathon-judge")
+
+    client = SandboxClient()
+    try:
+        sandbox = client.create_sandbox(template=template, namespace=namespace)
+        try:
+            # Clone the repo
+            sandbox.commands.run(f"git clone {github_url} repo")
+
+            # Write criteria to markdown file
+            sandbox.files.write("criteria.md", judging_criteria)
+
+            # Invoke gemini CLI
+            prompt = (
+                "Evaluate the codebase in this directory against the criteria in ../criteria.md. "
+                "Analyze the code, run it if necessary, and write your final findings as a JSON object "
+                "to ../evaluation.json. The JSON must have 'scores' (list of {name, score, reasoning}), "
+                "'total_score', 'overall_comments', and 'confidence_score'."
+            )
+            sandbox.commands.run(f"cd repo && gemini --yolo '{prompt}'")
+
+            # Read the JSON evaluation
+            result_json = sandbox.files.read("evaluation.json")
+            return result_json
+        except Exception as e:
+            return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
+        finally:
+            client.delete_sandbox(sandbox.name)
+    except Exception as e:
+        return f"{{ 'error': 'Sandbox creation failed: {str(e)}' }}"
 
 class EvaluationScore(BaseModel):
     name: str = Field(description="The name of the scoring criteria category.")
@@ -30,7 +76,12 @@ class ADKAgentAdapter(AgentService):
 You are an expert hackathon judge evaluating a project.
 Analyze the provided submission and evaluate it against the given criteria and rubric.
 Be highly objective and provide detailed reasoning for each score.
+
+You must use the `evaluate_repository` tool to delegate the deep codebase analysis to a sandboxed agent.
+Pass the GitHub URL and the scoring criteria formatted as markdown to the tool.
+The tool will return a JSON string with the evaluation results. Use this data to formulate your final response.
             """,
+            tools=[evaluate_repository],
             output_schema=EvaluationOutput,
             output_key="evaluation_result",
         )
