@@ -36,5 +36,4 @@ htmlcov/
 .pytest_cache/
 
 # Cloud Run specific
-Dockerfile
 .dockerignore
