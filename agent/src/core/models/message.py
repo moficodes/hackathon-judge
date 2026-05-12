@@ -20,6 +20,7 @@ class CategoryScore(BaseModel):
     name: str
     score: float
     reasoning: str
+    max_score: float = 10.0
 
 class AgentResponse(BaseModel):
     """The result sent back to the backend (Judging Result)"""
