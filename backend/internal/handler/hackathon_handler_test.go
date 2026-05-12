@@ -103,3 +103,55 @@ func TestListEvaluationsByProject_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestGetHackathon(t *testing.T) {
+	r, _ := setupRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/api/hackathons/1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var res domain.Hackathon
+	err := json.Unmarshal(w.Body.Bytes(), &res)
+	assert.NoError(t, err)
+	assert.Equal(t, "1", res.ID)
+	assert.Equal(t, "Summer Hack", res.Title)
+}
+
+func TestGetHackathon_NotFound(t *testing.T) {
+	r, _ := setupRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/api/hackathons/invalid_id", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGetProject(t *testing.T) {
+	r, _ := setupRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/api/projects/p1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var res domain.Project
+	err := json.Unmarshal(w.Body.Bytes(), &res)
+	assert.NoError(t, err)
+	assert.Equal(t, "p1", res.ID)
+	assert.Equal(t, "Proj1", res.Name)
+}
+
+func TestGetProject_NotFound(t *testing.T) {
+	r, _ := setupRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/api/projects/invalid_id", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}

@@ -10,7 +10,9 @@ import (
 
 type HackathonService interface {
 	ListHackathons() ([]domain.Hackathon, error)
+	GetHackathon(id string) (domain.Hackathon, error)
 	ListProjectsByHackathon(id string) ([]domain.Project, error)
+	GetProject(id string) (domain.Project, error)
 	AddEvaluation(eval domain.Evaluation) error
 	ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error)
 	TriggerJudging(projectID string) (string, error)
@@ -29,6 +31,14 @@ func NewHackathonService(repo domain.HackathonRepository, projectRepo domain.Pro
 
 func (s *hackathonService) ListHackathons() ([]domain.Hackathon, error) {
 	return s.repo.GetAll()
+}
+
+func (s *hackathonService) GetHackathon(id string) (domain.Hackathon, error) {
+	return s.repo.GetByID(id)
+}
+
+func (s *hackathonService) GetProject(id string) (domain.Project, error) {
+	return s.projectRepo.GetProjectByID(id)
 }
 
 func (s *hackathonService) ListProjectsByHackathon(id string) ([]domain.Project, error) {

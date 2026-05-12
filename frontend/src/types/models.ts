@@ -1,4 +1,11 @@
-// src/types/models.ts
+// frontend/src/types/models.ts
+export interface Criterion {
+  name: string;
+  weight: number;
+  description: string;
+  max_score: number;
+}
+
 export interface Hackathon {
   id: string;
   title: string;
@@ -6,6 +13,8 @@ export interface Hackathon {
   description: string;
   goal: string;
   status: string;
+  criteria?: Criterion[];
+  bonus_criteria?: Criterion[];
 }
 
 export interface Project {
@@ -25,6 +34,8 @@ export interface CriteriaScore {
   name: string;
   score: number;
   weight: number;
+  reasoning?: string;
+  max_score?: number;
 }
 
 export interface Evaluation {

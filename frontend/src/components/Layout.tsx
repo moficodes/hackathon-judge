@@ -4,7 +4,7 @@ import Header from './Header';
 
 export default function Layout() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] h-screen overflow-hidden">
+    <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] h-screen ">
       <Sidebar />
       <div className="flex flex-col min-w-0">
         <Header />
