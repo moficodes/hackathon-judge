@@ -35,6 +35,7 @@ export interface CriteriaScore {
   score: number;
   weight: number;
   reasoning?: string;
+  max_score?: number;
 }
 
 export interface Evaluation {

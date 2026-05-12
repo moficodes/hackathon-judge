@@ -85,7 +85,7 @@ export default function ProjectDetail() {
                         <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
                           <span className="font-bold text-slate-700 text-lg">{c.name}</span>
                           <div className="text-right">
-                            <span className="font-black text-blue-600 text-lg">{c.score}</span>
+                            <span className="font-black text-blue-600 text-lg">{c.score}{c.max_score ? ` / ${c.max_score}` : ""}</span>
                             <span className="text-gray-400 text-xs ml-2">(Weight: {c.weight})</span>
                           </div>
                         </div>
