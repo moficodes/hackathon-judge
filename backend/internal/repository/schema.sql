@@ -1,0 +1,85 @@
+
+
+-- Set the default project and dataset for subsequent queries in this session.
+SET @@dataset_project_id = '<<YOUR PROJECT ID>>';
+SET @@dataset_id = 'hackathon_judge';
+
+CREATE SCHEMA IF NOT EXISTS `hackathon_judge`;
+
+
+-- Create a Connection Resource
+CREATE CONNECTION IF NOT EXISTS `us.connection-resource`
+OPTIONS (
+  connection_type = 'CLOUD_RESOURCE'
+);
+
+-- Grant permissions for the connection resource
+GRANT `roles/aiplatform.user`
+ON PROJECT `<<YOUR PROJECT ID>>`
+TO "connection:us.connection-resource";
+
+GRANT `roles/storage.objectViewer`
+ON PROJECT `<<YOUR PROJECT ID>>`
+TO "connection:us.connection-resource";
+
+-- Hackathons Table
+CREATE TABLE IF NOT EXISTS `hackathons` (
+    id STRING,
+    name STRING,
+    title STRING,
+    date TIMESTAMP,
+    description STRING,
+    goal STRING,
+    status STRING
+);
+
+-- Projects Table
+CREATE TABLE IF NOT EXISTS `projects` (
+    id STRING,
+    name STRING,
+    title STRING,
+    object_ref STRUCT< uri STRING, version STRING, authorizer STRING, details JSON>,
+    github_url STRING,
+    team_name STRING,
+    document STRING,
+    processing_date TIMESTAMP,
+    hackathon_id STRING,
+    score FLOAT64
+);
+
+-- Evaluations Table
+CREATE TABLE IF NOT EXISTS `evaluations` (
+    id STRING,
+    project_id STRING,
+    judge_id STRING,
+    criteria ARRAY<STRUCT<name STRING, prompt STRING, score FLOAT64, weight FLOAT64>>,
+    total_score FLOAT64,
+    comment STRING,
+    created_at TIMESTAMP
+);
+
+-- Insert sample evaluation criteria with weights
+INSERT INTO `criteria` (name, prompt, weight)
+VALUES
+  ('Documentation', 'How clear, concise and thorough is the documentation?', 0.2),
+  ('Innovation', 'How creative and original is the project?', 0.3),
+  ('Design', 'How well-designed is the user interface and experience?', 0.2),
+  ('Impact', 'What is the potential impact of the project?', 0.3);
+
+
+-- Create an External Table
+-- TODO: subatin
+CREATE EXTERNAL TABLE IF NOT EXISTS `submissions_objects`
+WITH CONNECTION `us.connection-resource`
+OPTIONS (
+  object_metadata = 'SIMPLE',
+  uris = ['gs://stabby-repos/*']
+);
+
+
+-- Test the setup:
+SELECT ref.uri,
+AI.SCORE(prompt => ('Rate this project based on the documentation quality on a scale of 0 to 100. Good quality includes clarity, completeness, and organization. Also images and possibly videos', OBJ.GET_ACCESS_URL(ref, 'r'))),
+AI.GENERATE(prompt => ('Summarize this project', OBJ.GET_ACCESS_URL(ref, 'r') )).result as summary
+FROM `submissions_objects`
+WHERE uri LIKE ('%README%')
