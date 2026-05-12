@@ -9,6 +9,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestGetHackathon(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+
+	h, err := svc.GetHackathon("1")
+	assert.NoError(t, err)
+	assert.Equal(t, "1", h.ID)
+	assert.Equal(t, "Summer Hack", h.Title)
+
+	_, err = svc.GetHackathon("invalid")
+	assert.Error(t, err)
+}
+
+func TestGetProject(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+
+	p, err := svc.GetProject("p1")
+	assert.NoError(t, err)
+	assert.Equal(t, "p1", p.ID)
+	assert.Equal(t, "Proj1", p.Name)
+
+	_, err = svc.GetProject("invalid")
+	assert.Error(t, err)
+}
+
 func TestAddEvaluationUpdatesProjectScore(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewHackathonService(repo, repo, repo, nil)
