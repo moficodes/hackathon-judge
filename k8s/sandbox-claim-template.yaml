@@ -1,0 +1,26 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: sandbox-hackathon-judge-template
+  namespace: hackathon-judge
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: sandbox
+        sandbox: sandbox-python-computeruse
+      annotations:
+        test: "yes"
+    spec:
+      serviceAccountName: hackathon-judge-sandbox-sa
+      containers:
+      - name: hackathon-judge
+        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8888
+        env:
+        - name: GOOGLE_CLOUD_PROJECT
+          value: $GOOGLE_CLOUD_PROJECT
+        - name: GOOGLE_CLOUD_LOCATION
+          value: $GOOGLE_CLOUD_REGION
