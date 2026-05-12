@@ -2,7 +2,7 @@
 import useSWR from 'swr';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetcher } from '../utils/fetcher';
-import type { Evaluation, Project } from '../types/models';
+import type { Evaluation, Project, Hackathon } from '../types/models';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -13,13 +13,19 @@ export default function ProjectDetail() {
     fetcher
   );
 
+  const { data: hackathon, error: hackathonError, isLoading: isHackathonLoading } = useSWR<Hackathon>(
+    project?.hackathon_id ? `/api/hackathons/${project.hackathon_id}` : null,
+    fetcher
+  );
+
   const { data: evaluations, error: evalError, isLoading: isEvalLoading } = useSWR<Evaluation[]>(
     id ? `/api/projects/${id}/evaluations` : null, 
     fetcher
   );
 
-  if (isProjectLoading || isEvalLoading) return <div className="p-4">Loading details...</div>;
+  if (isProjectLoading || isEvalLoading || isHackathonLoading) return <div className="p-4">Loading details...</div>;
   if (projectError) return <div className="p-4 text-red-500">Failed to load project details.</div>;
+  if (hackathonError) return <div className="p-4 text-red-500">Failed to load hackathon details.</div>;
   if (evalError) return <div className="p-4 text-red-500">Failed to load evaluations.</div>;
 
   return (
@@ -80,22 +86,38 @@ export default function ProjectDetail() {
                 <div className="mb-6">
                   <h4 className="text-lg font-bold mb-4 text-slate-800">Criteria Breakdown</h4>
                   <div className="space-y-4">
-                    {e.criteria.map((c, idx) => (
-                      <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                        <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
-                          <span className="font-bold text-slate-700 text-lg">{c.name}</span>
-                          <div className="text-right">
-                            <span className="font-black text-blue-600 text-lg">{c.score}{c.max_score ? ` / ${c.max_score}` : ""}</span>
-                            <span className="text-gray-400 text-xs ml-2">(Weight: {c.weight})</span>
+                    {e.criteria.map((c, idx) => {
+                      const criterionDef = hackathon?.criteria?.find(hc => hc.name === c.name) || hackathon?.bonus_criteria?.find(hc => hc.name === c.name);
+                      const maxScore = criterionDef?.max_score ?? c.max_score;
+                      const weight = criterionDef?.weight ?? c.weight;
+
+                      return (
+                        <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                          <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
+                            <span className="font-bold text-slate-700 text-lg">{c.name}</span>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <span className="text-[10px] text-gray-400 uppercase font-bold block leading-none mb-1">Score</span>
+                                <span className="font-black text-blue-600 text-lg">{c.score}</span>
+                              </div>
+                              <div className="text-right border-l border-gray-200 pl-4">
+                                <span className="text-[10px] text-gray-400 uppercase font-bold block leading-none mb-1">Max</span>
+                                <span className="font-bold text-slate-700">{maxScore || '-'}</span>
+                              </div>
+                              <div className="text-right border-l border-gray-200 pl-4">
+                                <span className="text-[10px] text-gray-400 uppercase font-bold block leading-none mb-1">Weight</span>
+                                <span className="font-bold text-slate-700">{weight || '-'}</span>
+                              </div>
+                            </div>
                           </div>
+                          {c.reasoning ? (
+                            <p className="text-sm text-gray-600 italic leading-relaxed">"{c.reasoning}"</p>
+                          ) : (
+                            <p className="text-sm text-gray-400 italic">No detailed reasoning provided.</p>
+                          )}
                         </div>
-                        {c.reasoning ? (
-                          <p className="text-sm text-gray-600 italic leading-relaxed">"{c.reasoning}"</p>
-                        ) : (
-                          <p className="text-sm text-gray-400 italic">No detailed reasoning provided.</p>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
