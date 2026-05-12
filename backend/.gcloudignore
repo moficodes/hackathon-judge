@@ -21,5 +21,4 @@ tmp/
 ._*
 
 # Cloud Run specific
-Dockerfile
 .dockerignore
