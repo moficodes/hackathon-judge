@@ -6,6 +6,7 @@ class ScoringCriteria(BaseModel):
     name: str
     weight: float
     max_score: float = 10.0
+    weight: float = 1.0
 
 class AgentRequest(BaseModel):
     """The incoming task from the backend (Judging Task)"""
@@ -21,6 +22,7 @@ class CategoryScore(BaseModel):
     score: float
     reasoning: str
     max_score: float = 10.0
+    weight: float = 1.0
 
 class AgentResponse(BaseModel):
     """The result sent back to the backend (Judging Result)"""
