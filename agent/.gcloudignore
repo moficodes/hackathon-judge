@@ -1,5 +1,47 @@
 .git
 .gitignore
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.組合
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Environments
 .env
 .venv
 env/
@@ -8,12 +50,27 @@ ENV/
 env.bak/
 venv.bak/
 
-# Byte-compiled / optimized / DLL files
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
 
-# IDEs and Tools
+# IDEs
 .vscode/
 .idea/
 .spyderproject
@@ -21,7 +78,7 @@ __pycache__/
 *.swp
 *.swo
 
-# OS generated files
+# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -30,10 +87,7 @@ __pycache__/
 ehthumbs.db
 Thumbs.db
 
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
+superpowers/
 
 # Cloud Run specific
 .dockerignore
