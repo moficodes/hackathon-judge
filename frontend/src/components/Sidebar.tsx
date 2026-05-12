@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { Home, LayoutDashboard, Info } from 'lucide-react';
+import UnicornMascot from './UnicornMascot';
 
 const navItems = [
   { name: 'Home', path: '/', icon: Home },
@@ -10,8 +11,8 @@ const navItems = [
 export default function Sidebar() {
   return (
     <aside className="hidden md:flex bg-primary text-white border-r border-white/10 shadow-sm z-10 flex-col w-[240px]">
-      <div className="p-lg font-bold text-lg border-b border-white/10">
-        Hackathon Judge
+      <div className="p-lg border-b border-white/10">
+        <UnicornMascot />
       </div>
       <nav className="flex-1 p-md">
         <ul className="flex flex-col gap-sm">
