@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: hackathon-judge
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: hackathon-judge-sa
+      containers:
+      - name: backend
+        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/backend:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        env:
+        - name: GOOGLE_CLOUD_PROJECT
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: GOOGLE_CLOUD_PROJECT
+        - name: TASKS_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: TASKS_TOPIC
+        - name: RESULTS_SUB
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: RESULTS_SUB

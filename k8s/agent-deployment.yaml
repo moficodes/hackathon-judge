@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  namespace: hackathon-judge
+  labels:
+    app: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      serviceAccountName: hackathon-judge-sa
+      containers:
+      - name: agent
+        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        - name: GOOGLE_CLOUD_PROJECT
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: GOOGLE_CLOUD_PROJECT
+        - name: GOOGLE_CLOUD_LOCATION
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: GOOGLE_CLOUD_REGION
+        - name: TASKS_SUBSCRIPTION
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: TASKS_SUBSCRIPTION
+        - name: RESULTS_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: RESULTS_TOPIC
+        - name: USE_MOCK_PUBSUB
+          value: "false"
