@@ -94,9 +94,19 @@ Please evaluate this project and provide scores for each category.
             else:
                 eval_output = EvaluationOutput.model_validate(eval_output_dict)
             
+                                    # Create lookups for max scores and weights
+            max_score_lookup = {c.name: c.max_score for c in request.scoring_criteria}
+            weight_lookup = {c.name: c.weight for c in request.scoring_criteria}
+            
             # Map to response schema
             category_scores = [
-                CategoryScore(name=s.name, score=s.score, reasoning=s.reasoning)
+                CategoryScore(
+                    name=s.name, 
+                    score=s.score, 
+                    reasoning=s.reasoning,
+                    max_score=max_score_lookup.get(s.name, 10.0),
+                    weight=weight_lookup.get(s.name, 1.0)
+                )
                 for s in eval_output.scores
             ]
             

@@ -19,14 +19,32 @@ describe('HackathonDetail Component', () => {
         </Routes>
       </MemoryRouter>
     );
-    expect(screen.getByText('Loading projects...')).toBeInTheDocument();
+    expect(screen.getByText('Loading details...')).toBeInTheDocument();
   });
 
   it('renders projects data', async () => {
-    const mockData = [
-      { id: 'p1', name: 'AI Builder', team_name: 'Team Alpha', score: 95.5 },
-    ];
-    mockUseSWR.mockReturnValue({ data: mockData, error: undefined, isLoading: false });
+    mockUseSWR.mockImplementation((key) => {
+      if (typeof key === 'string' && key.includes('/projects')) {
+        if (key.endsWith('/evaluations')) {
+           return { data: [], error: undefined, isLoading: false };
+        }
+        return {
+          data: [
+            { id: 'p1', title: 'AI Builder', team_name: 'Team Alpha', score: 95.5 },
+          ],
+          error: undefined,
+          isLoading: false,
+        };
+      }
+      if (typeof key === 'string' && key.includes('/hackathons/')) {
+        return {
+           data: { id: '1', title: 'Test Hackathon', date: '2026-05-11', status: 'ACTIVE', goal: 'Test Goal' },
+           error: undefined,
+           isLoading: false,
+        };
+      }
+      return { data: undefined, error: undefined, isLoading: true };
+    });
     
     render(
       <MemoryRouter initialEntries={['/hackathons/1']}>

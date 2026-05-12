@@ -20,7 +20,9 @@ func (h *HackathonHandler) RegisterRoutes(r *gin.Engine) {
 	api := r.Group("/api")
 	{
 		api.GET("/hackathons", h.GetHackathons)
+		api.GET("/hackathons/:id", h.GetHackathon)
 		api.GET("/hackathons/:id/projects", h.GetProjects)
+		api.GET("/projects/:id", h.GetProject)
 		api.GET("/projects/:id/evaluations", h.GetEvaluations)
 		api.POST("/projects/:id/judge", h.TriggerJudging)
 	}
@@ -36,12 +38,34 @@ func (h *HackathonHandler) GetHackathons(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
+func (h *HackathonHandler) GetHackathon(c *gin.Context) {
+	id := c.Param("id")
+	res, err := h.svc.GetHackathon(id)
+	if err != nil {
+		log.Printf("[ERROR] GetHackathon failed for %s: %v\n", id, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Hackathon not found"})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
 func (h *HackathonHandler) GetProjects(c *gin.Context) {
 	id := c.Param("id")
 	res, err := h.svc.ListProjectsByHackathon(id)
 	if err != nil {
 		log.Printf("[ERROR] GetProjects failed for hackathon %s: %v\n", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+func (h *HackathonHandler) GetProject(c *gin.Context) {
+	id := c.Param("id")
+	res, err := h.svc.GetProject(id)
+	if err != nil {
+		log.Printf("[ERROR] GetProject failed for %s: %v\n", id, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 		return
 	}
 	c.JSON(http.StatusOK, res)

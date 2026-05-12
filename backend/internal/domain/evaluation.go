@@ -8,6 +8,8 @@ type CriteriaScore struct {
 	Name      string  `json:"name"`
 	Score     float64 `json:"score"`
 	Reasoning string  `json:"reasoning"`
+	MaxScore  float64 `json:"max_score"`
+	Weight    float64 `json:"weight"`
 }
 
 type Evaluation struct {
