@@ -723,10 +723,13 @@ if [ "$RUN_K8S" = "true" ]; then
     local ksa_name=$1
     local role=$2
     log_info "  Binding $role to $ksa_name..."
-    gcloud projects add-iam-policy-binding "projects/$GOOGLE_CLOUD_PROJECT" \
+    if ! gcloud projects add-iam-policy-binding "projects/$GOOGLE_CLOUD_PROJECT" \
       --role="$role" \
       --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$GOOGLE_CLOUD_PROJECT.svc.id.goog/subject/ns/$NAMESPACE/sa/$ksa_name" \
-      --condition=None >/dev/null
+      --condition=None >/dev/null 2>&1; then
+      log_error "Failed to bind role $role to service account $ksa_name."
+      exit 1
+    fi
   }
 
   log_info "Configuring IAM permissions for Kubernetes Service Accounts via Workload Identity..."
