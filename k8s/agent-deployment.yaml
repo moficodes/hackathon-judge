@@ -35,10 +35,7 @@ spec:
               name: hackathon-judge-config
               key: GOOGLE_CLOUD_PROJECT
         - name: GOOGLE_CLOUD_LOCATION
-          valueFrom:
-            configMapKeyRef:
-              name: hackathon-judge-config
-              key: GOOGLE_CLOUD_REGION
+          value: "global"
         - name: TASKS_SUBSCRIPTION
           valueFrom:
             configMapKeyRef:
