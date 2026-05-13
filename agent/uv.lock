@@ -15,7 +15,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-adk" },
     { name = "google-cloud-pubsub" },
-    { name = "k8s-agent-sandbox" },
+    { name = "k8s-agent-sandbox", extra = ["async"] },
     { name = "python-dotenv" },
     { name = "uvicorn" },
 ]
@@ -32,7 +32,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "google-adk", specifier = ">=1.33.0" },
     { name = "google-cloud-pubsub", specifier = ">=2.38.0" },
-    { name = "k8s-agent-sandbox", specifier = ">=0.4.5" },
+    { name = "k8s-agent-sandbox", extras = ["async"], specifier = ">=0.4.5" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "uvicorn", specifier = ">=0.46.0" },
 ]
@@ -1400,6 +1400,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/85/2e/0d291374460a9b67aa54d7208c82c20ad5b57d665adad211cb6ae9d30b08/k8s_agent_sandbox-0.4.5-py3-none-any.whl", hash = "sha256:84a2a1e69afa50df4640d83caf32e63862643dd8d9ff71b6e32ca252820017bf", size = 64108, upload-time = "2026-05-06T21:03:30.935Z" },
 ]
 
+[package.optional-dependencies]
+async = [
+    { name = "httpx" },
+    { name = "kubernetes-asyncio" },
+]
+
 [[package]]
 name = "kubernetes"
 version = "35.0.0"
@@ -1418,6 +1424,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2c/8f/85bf51ad4150f64e8c665daf0d9dfe9787ae92005efb9a4d1cba592bd79d/kubernetes-35.0.0.tar.gz", hash = "sha256:3d00d344944239821458b9efd484d6df9f011da367ecb155dadf9513f05f09ee", size = 1094642, upload-time = "2026-01-16T01:05:27.76Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/70/05b685ea2dffcb2adbf3cdcea5d8865b7bc66f67249084cf845012a0ff13/kubernetes-35.0.0-py2.py3-none-any.whl", hash = "sha256:39e2b33b46e5834ef6c3985ebfe2047ab39135d41de51ce7641a7ca5b372a13d", size = 2017602, upload-time = "2026-01-16T01:05:25.991Z" },
+]
+
+[[package]]
+name = "kubernetes-asyncio"
+version = "35.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "certifi" },
+    { name = "python-dateutil" },
+    { name = "pyyaml" },
+    { name = "six" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/67/b9/f3b9fb2d3ef4550918b83c328dc720a58f65bc66732d9438e06469573ad1/kubernetes_asyncio-35.0.1.tar.gz", hash = "sha256:975870e3097b647c265a59b9175ab0841f0de06cd2162268273ca210b1fa672e", size = 1320250, upload-time = "2026-02-25T20:40:42.87Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/b3/a8917d253763095fb8dcaaefc6a135ed31abbd13f681e78752e226e252fe/kubernetes_asyncio-35.0.1-py3-none-any.whl", hash = "sha256:244ef45943e89c5c5104276a646bfcbf1a9dc3d060876c2094aa601e932f1c03", size = 2868606, upload-time = "2026-02-25T20:40:41.191Z" },
 ]
 
 [[package]]
