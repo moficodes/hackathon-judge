@@ -4,9 +4,9 @@ from typing import List, Optional
 
 class ScoringCriteria(BaseModel):
     name: str
-    weight: float
-    max_score: float = 10.0
+    description: str = ""
     weight: float = 1.0
+    max_score: float = 10.0
 
 class AgentRequest(BaseModel):
     """The incoming task from the backend (Judging Task)"""

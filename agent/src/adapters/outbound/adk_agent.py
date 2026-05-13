@@ -38,31 +38,29 @@ async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
             template=template,
             namespace=namespace,
         )
-        result = await sandbox.commands.run("echo 'Hello from async!'")
-        print(result.stdout)
         try:
             # Clone the repo
-            sandbox.commands.run(f"git clone {github_url} repo")
+            await sandbox.commands.run(f"git clone {github_url} repo")
 
             # Write criteria to markdown file
-            sandbox.files.write("criteria.md", judging_criteria)
+            await sandbox.files.write("criteria.md", judging_criteria)
 
             # Invoke gemini CLI
             prompt = (
-                "Evaluate the codebase in this directory against the criteria in criteria.md. "
+                "Evaluate the codebase in the repo directory against the criteria in criteria.md. "
                 "Analyze the code, run it if necessary, and write your final findings as a JSON object "
                 "to evaluation.json. The JSON must have 'scores' (list of {name, score, reasoning}), "
                 "'total_score', 'overall_comments', and 'confidence_score'."
             )
-            sandbox.commands.run(f"gemini --yolo '{prompt}'")
+            await sandbox.commands.run(f"gemini --yolo '{prompt}'")
 
             # Read the JSON evaluation
-            result_json = sandbox.files.read("evaluation.json")
+            result_json = await sandbox.files.read("evaluation.json")
             return result_json
         except Exception as e:
             return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
         finally:
-            client.delete_sandbox(sandbox.name)
+            await client.delete_sandbox(sandbox.name)
 
 class EvaluationScore(BaseModel):
     name: str = Field(description="The name of the scoring criteria category.")
@@ -103,7 +101,7 @@ The tool will return a JSON string with the evaluation results. Use this data to
     async def process_message(self, request: AgentRequest) -> AgentResponse:
         try:
             # Format criteria
-            criteria_text = "\n".join([f"- {c.name} (Weight: {c.weight}, Max Score: {c.max_score})" for c in request.scoring_criteria])
+            criteria_text = "\n".join([f"- {c.name} (Weight: {c.weight}, Max Score: {c.max_score}): {c.description}" for c in request.scoring_criteria])
             
             prompt = f"""
 Project Name: {request.project_name}

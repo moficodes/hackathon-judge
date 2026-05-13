@@ -30,21 +30,13 @@ type EvaluationRepository interface {
 	GetEvaluationByID(id string) (Evaluation, error)
 }
 
-// Messaging Models (Pub/Sub)
-
-type ScoringCriteria struct {
-	Name     string  `json:"name"`
-	Weight   float64 `json:"weight"`
-	MaxScore float64 `json:"max_score"`
-}
-
 type JudgingTask struct {
-	TaskID          string            `json:"task_id"`
-	ProjectName     string            `json:"project_name"`
-	GithubURL       string            `json:"github_url"`
-	SubmissionText  string            `json:"submission_text"`
-	JudgingRubric   string            `json:"judging_rubric"`
-	ScoringCriteria []ScoringCriteria `json:"scoring_criteria"`
+	TaskID          string      `json:"task_id"`
+	ProjectName     string      `json:"project_name"`
+	GithubURL       string      `json:"github_url"`
+	SubmissionText  string      `json:"submission_text"`
+	JudgingRubric   string      `json:"judging_rubric"`
+	ScoringCriteria []Criterion `json:"scoring_criteria"`
 }
 
 type JudgingResult struct {

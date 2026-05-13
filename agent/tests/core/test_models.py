@@ -8,10 +8,11 @@ def test_agent_request_model():
         github_url="https://github.com/moficodes/test",
         submission_text="Here is my code",
         judging_rubric="Be nice",
-        scoring_criteria=[ScoringCriteria(name="Innovation", weight=0.5)]
+        scoring_criteria=[ScoringCriteria(name="Innovation", description="How new is this?", weight=0.5)]
     )
     assert req.task_id == "tsk_123"
     assert req.scoring_criteria[0].max_score == 10.0
+    assert req.scoring_criteria[0].description == "How new is this?"
 
 def test_agent_response_model():
     res = AgentResponse(
