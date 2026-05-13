@@ -15,7 +15,7 @@ spec:
       serviceAccountName: hackathon-judge-sandbox-sa
       containers:
       - name: hackathon-judge
-        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:latest
+        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:$COMMIT_SHA
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8888

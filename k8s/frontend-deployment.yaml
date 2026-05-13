@@ -18,7 +18,7 @@ spec:
       serviceAccountName: hackathon-judge-sa
       containers:
       - name: frontend
-        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/frontend:latest
+        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/frontend:$COMMIT_SHA
         ports:
         - containerPort: 80
         resources:
