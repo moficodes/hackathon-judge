@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import calmUnicorn from '../assets/unicorn_calm.svg';
-import neighUnicorn from '../assets/unicorn_neigh.svg';
+import calmUnicorn from '../assets/unicorn_calm.png';
+import neighUnicorn from '../assets/unicorn_neigh.png';
 
 export default function UnicornMascot() {
   const [isNeighing, setIsNeighing] = useState(false);
