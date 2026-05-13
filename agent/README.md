@@ -44,6 +44,26 @@ uv run pytest
 
 ## Architecture Overview
 
+```mermaid
+graph TD
+    A[Pub/Sub Input Topic] -->|Subscribes| B(BackgroundSubscriber)
+    B -->|Triggers| C(Core AgentService)
+    C -->|Calls| D(ADKAgentAdapter)
+    D -->|Executes| E[ADK Sandbox/Model]
+    E -.->|Returns| D
+    D -.->|Returns| C
+    C -->|Uses| F(PubSubPublisherAdapter)
+    F -->|Publishes| G[Pub/Sub Output Topic]
+
+    classDef core fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef adapter fill:#bbf,stroke:#333,stroke-width:1px;
+    classDef external fill:#eee,stroke:#333,stroke-width:1px;
+
+    class C core;
+    class B,D,F adapter;
+    class A,E,G external;
+```
+
 This project follows a Hexagonal Architecture to separate concerns and ensure testability:
 
 - **`src/core/`**: Contains the Domain Models (`AgentRequest`, `AgentResponse`) and Ports/Interfaces (`MessagePublisher`, `AgentService`).
