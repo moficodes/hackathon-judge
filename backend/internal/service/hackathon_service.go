@@ -132,21 +132,9 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 	}
 
 	// Create judging criteria mapping
-	var scoringCriteria []domain.ScoringCriteria
-	for _, c := range hackathon.Criteria {
-		scoringCriteria = append(scoringCriteria, domain.ScoringCriteria{
-			Name:     c.Name,
-			Weight:   c.Weight,
-			MaxScore: c.MaxScore,
-		})
-	}
-	for _, c := range hackathon.BonusCriteria {
-		scoringCriteria = append(scoringCriteria, domain.ScoringCriteria{
-			Name:     c.Name,
-			Weight:   c.Weight,
-			MaxScore: c.MaxScore,
-		})
-	}
+	var scoringCriteria []domain.Criterion
+	scoringCriteria = append(scoringCriteria, hackathon.Criteria...)
+	scoringCriteria = append(scoringCriteria, hackathon.BonusCriteria...)
 
 	taskID := "tsk_" + uuid.New().String()
 

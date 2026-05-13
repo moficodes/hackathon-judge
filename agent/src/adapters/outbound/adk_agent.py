@@ -10,9 +10,10 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 from typing import List
-from k8s_agent_sandbox import SandboxClient
+from k8s_agent_sandbox import AsyncSandboxClient
+from k8s_agent_sandbox.models import SandboxDirectConnectionConfig
 
-def evaluate_repository(github_url: str, judging_criteria: str) -> str:
+async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     """
     Clones a repository into a secure sandbox and uses an autonomous agent to evaluate it 
     against the provided judging criteria.
@@ -27,34 +28,39 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     template = os.getenv("SANDBOX_TEMPLATE", "sandbox-hackathon-judge-template")
     namespace = os.getenv("SANDBOX_NAMESPACE", "hackathon-judge")
 
-    client = SandboxClient()
-    try:
-        sandbox = client.create_sandbox(template=template, namespace=namespace)
+    template = os.getenv("SANDBOX_TEMPLATE", "sandbox-hackathon-judge-template")
+    namespace = os.getenv("SANDBOX_NAMESPACE", "hackathon-judge")
+    config = SandboxDirectConnectionConfig(
+        api_url=f"http://sandbox-router-svc.${namespace}.cluster.svc.local:8080"
+    )
+    async with AsyncSandboxClient(connection_config=config) as client:
+        sandbox = await client.create_sandbox(
+            template=template,
+            namespace=namespace,
+        )
         try:
             # Clone the repo
-            sandbox.commands.run(f"git clone {github_url} repo")
+            await sandbox.commands.run(f"git clone {github_url} repo")
 
             # Write criteria to markdown file
-            sandbox.files.write("criteria.md", judging_criteria)
+            await sandbox.files.write("criteria.md", judging_criteria)
 
             # Invoke gemini CLI
             prompt = (
-                "Evaluate the codebase in this directory against the criteria in ../criteria.md. "
+                "Evaluate the codebase in the repo directory against the criteria in criteria.md. "
                 "Analyze the code, run it if necessary, and write your final findings as a JSON object "
-                "to ../evaluation.json. The JSON must have 'scores' (list of {name, score, reasoning}), "
+                "to evaluation.json. The JSON must have 'scores' (list of {name, score, reasoning}), "
                 "'total_score', 'overall_comments', and 'confidence_score'."
             )
-            sandbox.commands.run(f"cd repo && gemini --yolo '{prompt}'")
+            await sandbox.commands.run(f"gemini --yolo '{prompt}'")
 
             # Read the JSON evaluation
-            result_json = sandbox.files.read("evaluation.json")
+            result_json = await sandbox.files.read("evaluation.json")
             return result_json
         except Exception as e:
             return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
         finally:
-            client.delete_sandbox(sandbox.name)
-    except Exception as e:
-        return f"{{ 'error': 'Sandbox creation failed: {str(e)}' }}"
+            await client.delete_sandbox(sandbox.name)
 
 class EvaluationScore(BaseModel):
     name: str = Field(description="The name of the scoring criteria category.")
@@ -95,7 +101,7 @@ The tool will return a JSON string with the evaluation results. Use this data to
     async def process_message(self, request: AgentRequest) -> AgentResponse:
         try:
             # Format criteria
-            criteria_text = "\n".join([f"- {c.name} (Weight: {c.weight}, Max Score: {c.max_score})" for c in request.scoring_criteria])
+            criteria_text = "\n".join([f"- {c.name} (Weight: {c.weight}, Max Score: {c.max_score}): {c.description}" for c in request.scoring_criteria])
             
             prompt = f"""
 Project Name: {request.project_name}

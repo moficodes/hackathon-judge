@@ -18,13 +18,13 @@ spec:
       serviceAccountName: hackathon-judge-sa
       containers:
       - name: agent
-        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:latest
+        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:$COMMIT_SHA
         ports:
         - containerPort: 8000
         resources:
           requests:
-            cpu: 100m
-            memory: 256Mi
+            cpu: 500m
+            memory: 512Mi
           limits:
             cpu: 500m
             memory: 512Mi
@@ -35,10 +35,7 @@ spec:
               name: hackathon-judge-config
               key: GOOGLE_CLOUD_PROJECT
         - name: GOOGLE_CLOUD_LOCATION
-          valueFrom:
-            configMapKeyRef:
-              name: hackathon-judge-config
-              key: GOOGLE_CLOUD_REGION
+          value: "global"
         - name: TASKS_SUBSCRIPTION
           valueFrom:
             configMapKeyRef:

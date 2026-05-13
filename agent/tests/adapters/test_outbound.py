@@ -1,6 +1,7 @@
 # tests/adapters/test_outbound.py
 import pytest
-from unittest.mock import patch, MagicMock
+import asyncio
+from unittest.mock import patch, MagicMock, AsyncMock
 from src.core.models.message import AgentRequest, AgentResponse, ScoringCriteria
 from src.adapters.outbound.adk_agent import ADKAgentAdapter
 from src.adapters.outbound.pubsub_publisher import MockPubSubPublisherAdapter, PubSubPublisherAdapter
@@ -45,7 +46,7 @@ async def test_adk_agent_adapter(mock_runner_cls):
         github_url="https://github.com/test/test",
         submission_text="Here is my code",
         judging_rubric="Be nice",
-        scoring_criteria=[ScoringCriteria(name="Innovation", weight=0.5)]
+        scoring_criteria=[ScoringCriteria(name="Innovation", description="test", weight=0.5)]
     )
     res = await agent.process_message(req)
     
@@ -60,24 +61,27 @@ def test_evaluate_repository_tool_registration():
     from src.adapters.outbound.adk_agent import evaluate_repository
     assert evaluate_repository in adapter.agent.tools
 
-@patch('src.adapters.outbound.adk_agent.SandboxClient')
-def test_evaluate_repository_execution(mock_sandbox_client_cls):
+@pytest.mark.asyncio
+@patch('src.adapters.outbound.adk_agent.AsyncSandboxClient')
+async def test_evaluate_repository_execution(mock_sandbox_client_cls):
     # Setup mock for manual instantiation
     mock_client = MagicMock()
+    mock_client.__aenter__.return_value = mock_client
     mock_sandbox_client_cls.return_value = mock_client
     
     mock_sandbox = MagicMock()
     mock_sandbox.name = "test-sandbox"
-    mock_client.create_sandbox.return_value = mock_sandbox
     
-    # Mocking successful commands and file reads
-    mock_sandbox.commands.run.return_value = MagicMock(exit_code=0)
-    mock_sandbox.files.read.return_value = '{"total_score": 10}'
+    # Mocking successful commands and file reads (async)
+    mock_client.create_sandbox = AsyncMock(return_value=mock_sandbox)
+    mock_sandbox.commands.run = AsyncMock(return_value=MagicMock(exit_code=0))
+    mock_sandbox.files.write = AsyncMock(return_value=None)
+    mock_sandbox.files.read = AsyncMock(return_value='{"total_score": 10}')
+    mock_client.delete_sandbox = AsyncMock(return_value=None)
 
     from src.adapters.outbound.adk_agent import evaluate_repository
-    result = evaluate_repository("https://github.com/test/repo", "# Criteria")
+    result = await evaluate_repository("https://github.com/test/repo", "# Criteria")
 
-    
     assert "total_score" in result
     mock_client.create_sandbox.assert_called_once_with(template="sandbox-hackathon-judge-template", namespace="hackathon-judge")
     mock_sandbox.commands.run.assert_any_call("git clone https://github.com/test/repo repo")
