@@ -715,6 +715,31 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Applying Kubernetes Service Accounts..."
   kubectl apply -f k8s/service-account.yaml
 
+  log_info "Fetching PROJECT_NUMBER for IAM bindings..."
+  PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
+  NAMESPACE="hackathon-judge"
+
+  bind_workload_identity() {
+    local ksa_name=$1
+    local role=$2
+    log_info "  Binding $role to $ksa_name..."
+    gcloud projects add-iam-policy-binding "projects/$GOOGLE_CLOUD_PROJECT" \
+      --role="$role" \
+      --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$GOOGLE_CLOUD_PROJECT.svc.id.goog/subject/ns/$NAMESPACE/sa/$ksa_name" \
+      --condition=None >/dev/null
+  }
+
+  log_info "Configuring IAM permissions for Kubernetes Service Accounts via Workload Identity..."
+  
+  # hackathon-judge-sa needs BigQuery reader/writer and Pub/Sub reader/writer permissions
+  bind_workload_identity "hackathon-judge-sa" "roles/bigquery.dataEditor"
+  bind_workload_identity "hackathon-judge-sa" "roles/bigquery.jobUser"
+  bind_workload_identity "hackathon-judge-sa" "roles/pubsub.publisher"
+  bind_workload_identity "hackathon-judge-sa" "roles/pubsub.subscriber"
+  
+  # hackathon-judge-sandbox-sa needs Vertex AI user permissions for judging logic
+  bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
+
   log_info "Applying Kubernetes ConfigMap with environment variables..."
   # All needed variables are already exported in Step 1
   envsubst < k8s/configmap.yaml | kubectl apply -f -
