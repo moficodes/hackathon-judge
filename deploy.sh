@@ -66,13 +66,14 @@ RUN_GKE=true
 RUN_PUBSUB=true
 RUN_BQ=true
 RUN_BUILD=true
+RUN_K8S=true
 
 # Track if the user passed ANY positive execution flags
 HAS_POSITIVE_FLAG=false
 
 for arg in "$@"; do
   case $arg in
-    --apis|--registry|--gke|--pubsub|--bq|--build)
+    --apis|--registry|--gke|--pubsub|--bq|--build|--k8s)
       HAS_POSITIVE_FLAG=true
       ;;
   esac
@@ -86,6 +87,7 @@ if [ "$HAS_POSITIVE_FLAG" = "true" ]; then
   RUN_PUBSUB=false
   RUN_BQ=false
   RUN_BUILD=false
+  RUN_K8S=false
 fi
 
 # Parse all command-line arguments
@@ -106,6 +108,8 @@ for arg in "$@"; do
     --no-bq) RUN_BQ=false ;;
     --build) RUN_BUILD=true ;;
     --no-build) RUN_BUILD=false ;;
+    --k8s) RUN_K8S=true ;;
+    --no-k8s) RUN_K8S=false ;;
     *)
       # Silent ignore or warning for unknown options
       ;;
@@ -118,12 +122,12 @@ if [ "$NON_INTERACTIVE" = "false" ] && [ ! -t 0 ]; then
   NON_INTERACTIVE=true
 fi
 
-log_header "GOOGLE CLOUD Infrastructure Provisioning & Build System"
+log_header "GOOGLE CLOUD Infrastructure Provisioning, Build & K8s Deployment"
 
 # ------------------------------------------------------------------------------
 # Step 1: Environment Configuration & Validation
 # ------------------------------------------------------------------------------
-log_step "1/8" "Environment Configuration & Validation ⚙️"
+log_step "1/10" "Environment Configuration & Validation ⚙️"
 
 ENV_FILE=".env"
 ENV_EXAMPLE=".env.example"
@@ -371,7 +375,7 @@ echo "  Cluster: ${CLUSTER_NAME}"
 # ------------------------------------------------------------------------------
 # Step 2: Google Cloud CLI & Authentication Check
 # ------------------------------------------------------------------------------
-log_step "2/8" "Google Cloud CLI & Authentication Check 🔍"
+log_step "2/10" "Google Cloud CLI & Authentication Check 🔍"
 
 if ! command -v gcloud &> /dev/null; then
   log_error "gcloud CLI is not installed."
@@ -382,6 +386,18 @@ fi
 if ! command -v bq &> /dev/null; then
   log_error "bq CLI (BigQuery command-line tool) is not installed."
   log_info "Please ensure BigQuery tools are available (run 'gcloud components install bq')."
+  exit 1
+fi
+
+if ! command -v kubectl &> /dev/null; then
+  log_error "kubectl CLI is not installed."
+  log_info "Please install it from: https://kubernetes.io/docs/tasks/tools/"
+  exit 1
+fi
+
+if ! command -v envsubst &> /dev/null; then
+  log_error "envsubst is not installed."
+  log_info "Please install it (usually part of 'gettext' package)."
   exit 1
 fi
 
@@ -398,7 +414,7 @@ log_success "Google Cloud credentials are valid."
 # ------------------------------------------------------------------------------
 # Step 3: Configuring Target Project
 # ------------------------------------------------------------------------------
-log_step "3/8" "Configuring Target Project 🎯"
+log_step "3/10" "Configuring Target Project 🎯"
 
 log_info "Setting active project in gcloud config..."
 gcloud config set project "$GOOGLE_CLOUD_PROJECT"
@@ -415,7 +431,7 @@ log_success "Project '$GOOGLE_CLOUD_PROJECT' is accessible and set active."
 # Step 4: Enabling Google Cloud APIs
 # ------------------------------------------------------------------------------
 if [ "$RUN_APIS" = "true" ]; then
-  log_step "4/8" "Enabling Google Cloud APIs ⚡"
+  log_step "4/10" "Enabling Google Cloud APIs ⚡"
 
   APIS_TO_ENABLE=(
     "container.googleapis.com"            # Google Kubernetes Engine
@@ -445,7 +461,7 @@ fi
 # Step 5: Creating Artifact Registry Docker Repository
 # ------------------------------------------------------------------------------
 if [ "$RUN_REGISTRY" = "true" ]; then
-  log_step "5/8" "Creating Artifact Registry Docker Repository 📦"
+  log_step "5/10" "Creating Artifact Registry Docker Repository 📦"
 
   log_info "Checking Artifact Registry repository: $ARTIFACT_REPO_NAME in $ARTIFACT_REGISTRY_LOCATION..."
   if ! gcloud artifacts repositories describe "$ARTIFACT_REPO_NAME" --location="$ARTIFACT_REGISTRY_LOCATION" &> /dev/null; then
@@ -470,7 +486,7 @@ fi
 # Step 6: Creating GKE Autopilot Cluster
 # ------------------------------------------------------------------------------
 if [ "$RUN_GKE" = "true" ]; then
-  log_step "6/8" "Creating GKE Autopilot Cluster 🚀"
+  log_step "6/10" "Creating GKE Autopilot Cluster 🚀"
 
   log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
   if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
@@ -496,7 +512,7 @@ fi
 # Step 7: Configuring Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
 if [ "$RUN_PUBSUB" = "true" ]; then
-  log_step "7/9" "Configuring Pub/Sub Topics & Subscriptions 📨"
+  log_step "7/10" "Configuring Pub/Sub Topics & Subscriptions 📨"
 
   # Robust function to create topic
   ensure_pubsub_topic() {
@@ -540,7 +556,7 @@ fi
 # Step 8: Configuring BigQuery Datasets & Tables
 # ------------------------------------------------------------------------------
 if [ "$RUN_BQ" = "true" ]; then
-  log_step "8/9" "Configuring BigQuery Datasets & Tables 📊"
+  log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
 
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
   if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET" &>/dev/null; then
@@ -600,7 +616,7 @@ fi
 # Step 9: Triggering Service Builds with Cloud Build
 # ------------------------------------------------------------------------------
 if [ "$RUN_BUILD" = "true" ]; then
-  log_step "9/9" "Triggering Service Builds with Cloud Build 🛠️"
+  log_step "9/10" "Triggering Service Builds with Cloud Build 🛠️"
 
   # Detect Git status and determine target tag
   COMMIT_SHA="latest"
@@ -635,6 +651,7 @@ if [ "$RUN_BUILD" = "true" ]; then
       image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
       log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
       
+      # Use gcloud artifacts docker tags list and grep for the specific tag
       if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
         log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
       else
@@ -666,6 +683,57 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+# Step 10: Kubernetes Deployment
+# ------------------------------------------------------------------------------
+if [ "$RUN_K8S" = "true" ]; then
+  log_step "10/10" "Kubernetes Deployment ☸️"
+
+  log_info "Getting credentials for GKE cluster: $CLUSTER_NAME..."
+  if ! gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$GOOGLE_CLOUD_REGION"; then
+    log_error "Failed to get GKE credentials."
+    exit 1
+  fi
+
+  log_info "Installing Agent Sandbox CRDs..."
+
+  VERSION=$(curl https://api.github.com/repos/kubernetes-sigs/agent-sandbox/releases/latest | jq -r '.tag_name')
+
+  # Using v0.4.5 as determined by web research
+  if ! kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml; then
+    log_error "Failed to install Agent Sandbox CRDs."
+    exit 1
+  fi
+  # Using v0.4.5 as determined by web research
+  if ! kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml; then
+    log_error "Failed to install Agent Sandbox CRDs."
+    exit 1
+  fi
+
+  log_info "Applying Kubernetes Namespace..."
+  kubectl apply -f k8s/namespace.yaml
+
+  log_info "Applying Kubernetes Service Accounts..."
+  kubectl apply -f k8s/service-account.yaml
+
+  log_info "Applying Kubernetes ConfigMap with environment variables..."
+  # All needed variables are already exported in Step 1
+  envsubst < k8s/configmap.yaml | kubectl apply -f -
+
+  log_info "Applying Sandbox Router..."
+  kubectl apply -f k8s/sandbox_router.yaml
+
+  log_info "Waiting for Sandbox Router deployment to be ready..."
+  if ! kubectl rollout status deployment/sandbox-router-deployment -n hackathon-judge --timeout=300s; then
+    log_error "Sandbox Router deployment failed to reach ready state within 5 minutes."
+    exit 1
+  fi
+
+  log_success "Kubernetes resources applied and verified!"
+else
+  log_info "Skipping Step 10: Kubernetes deployment (Bypassed by CLI flag)."
+fi
+
+# ------------------------------------------------------------------------------
 # Provisioning Complete!
 # ------------------------------------------------------------------------------
 log_header "Infrastructure Setup & Build Complete! 🎉"
@@ -674,4 +742,5 @@ log_info "To view your Artifact Registry repository, visit:"
 echo "  https://console.cloud.google.com/artifacts/docker/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REGISTRY_LOCATION}/${ARTIFACT_REPO_NAME}"
 log_info "To view your GKE Autopilot cluster, visit:"
 echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOGLE_CLOUD_PROJECT}"
+log_info "The Sandbox Router is deployed and available at: sandbox-router-svc.hackathon-judge.svc.cluster.local"
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"
