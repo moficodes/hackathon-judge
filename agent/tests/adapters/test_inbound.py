@@ -20,7 +20,7 @@ async def test_subscriber_processing():
         "github_url": "https://github.com/test/test",
         "submission_text": "text",
         "judging_rubric": "rubric",
-        "scoring_criteria": [{"name": "Innovate", "weight": 1.0, "max_score": 10}]
+        "scoring_criteria": [{"name": "Innovate", "description": "test", "weight": 1.0, "max_score": 10}]
     })
 
     await subscriber.process_raw_message("123", req_json)
