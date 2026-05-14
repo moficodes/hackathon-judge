@@ -18,7 +18,7 @@ spec:
       serviceAccountName: hackathon-judge-sa
       containers:
       - name: agent
-        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:$COMMIT_SHA
+        image: "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:$COMMIT_SHA"
         ports:
         - containerPort: 8000
         resources:
