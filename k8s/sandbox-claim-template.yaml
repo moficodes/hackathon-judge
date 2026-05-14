@@ -8,14 +8,14 @@ spec:
     metadata:
       labels:
         app: sandbox
-        sandbox: sandbox-python-computeruse
       annotations:
         test: "yes"
     spec:
+      runtimeClassName: gvisor
       serviceAccountName: hackathon-judge-sandbox-sa
       containers:
       - name: hackathon-judge
-        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:$COMMIT_SHA
+        image: "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:$COMMIT_SHA"
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8888
@@ -26,3 +26,5 @@ spec:
           value: "global"
         - name: GOOGLE_GENAI_USE_VERTEXAI
           value: "true"
+        - name: SANDBOX_DIR
+          value: "/app"

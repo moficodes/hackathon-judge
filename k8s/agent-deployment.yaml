@@ -18,7 +18,7 @@ spec:
       serviceAccountName: hackathon-judge-sa
       containers:
       - name: agent
-        image: ${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:$COMMIT_SHA
+        image: "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent:$COMMIT_SHA"
         ports:
         - containerPort: 8000
         resources:
@@ -36,6 +36,8 @@ spec:
               key: GOOGLE_CLOUD_PROJECT
         - name: GOOGLE_CLOUD_LOCATION
           value: "global"
+        - name: GOOGLE_GENAI_USE_VERTEXAI
+          value: "True"
         - name: TASKS_SUBSCRIPTION
           valueFrom:
             configMapKeyRef:
@@ -46,5 +48,15 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: RESULTS_TOPIC
+        - name: SANDBOX_TEMPLATE
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: SANDBOX_TEMPLATE
+        - name: SANDBOX_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: SANDBOX_NAMESPACE
         - name: USE_MOCK_PUBSUB
           value: "false"

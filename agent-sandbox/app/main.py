@@ -25,7 +25,12 @@ from pydantic import BaseModel
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-SANDBOX_DIR = os.getenv("SANDBOX_DIR", "/app")
+import sys
+
+SANDBOX_DIR = os.getenv("SANDBOX_DIR")
+if not SANDBOX_DIR:
+    print("Error: SANDBOX_DIR environment variable is required", file=sys.stderr)
+    sys.exit(1)
 
 class ExecuteRequest(BaseModel):
     """Request model for the /execute endpoint."""

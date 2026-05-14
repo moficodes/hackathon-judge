@@ -303,27 +303,7 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		eval.CreatedAt = time.Now()
 	}
 
-	bqEval := bqNestedEvaluation{
-		ID:         eval.ID,
-		JudgeID:    eval.JudgeID,
-		Status:     eval.Status,
-		TotalScore: eval.TotalScore,
-		Comment:    eval.Comment,
-		CreatedAt:  eval.CreatedAt,
-	}
-
-	bqEval.Criteria = make([]bqCriteriaScore, len(eval.Criteria))
-	for i, c := range eval.Criteria {
-		bqEval.Criteria[i] = bqCriteriaScore{
-			Name:        c.Name,
-			Score:       c.Score,
-			Description: c.Reasoning,
-			Weight:      c.Weight,
-			MaxScore:    c.MaxScore,
-		}
-	}
-
-	query := r.client.Query(fmt.Sprintf("UPDATE `%s.%s.projects` SET evaluations = ARRAY_CONCAT(evaluations, [@new_eval]) WHERE id = @project_id", r.projectID, r.datasetID))
+	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.hackathon_judge.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "new_eval", Value: bqEval},
 		{Name: "project_id", Value: eval.ProjectID},
@@ -368,19 +348,12 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 	}
 
 	query := r.client.Query(fmt.Sprintf(`
-		UPDATE %s.%s.projects 
-		SET evaluations = ARRAY(
-			SELECT AS STRUCT 
-				e.id,
-				IF(e.id = @eval_id, @updated_eval.judge_id, e.judge_id) as judge_id,
-				IF(e.id = @eval_id, @updated_eval.status, e.status) as status,
-				IF(e.id = @eval_id, @updated_eval.criteria, e.criteria) as criteria,
-				IF(e.id = @eval_id, @updated_eval.total_score, e.total_score) as total_score,
-				IF(e.id = @eval_id, @updated_eval.comment, e.comment) as comment,
-				IF(e.id = @eval_id, @updated_eval.created_at, e.created_at) as created_at
-			FROM UNNEST(evaluations) e
-		)
-		WHERE id = @project_id`, r.projectID, r.datasetID))
+		UPDATE %s.hackathon_judge.evaluations 
+		SET status = @status, 
+		    total_score = @total_score, 
+		    comment = @comment, 
+		    criteria_json = @criteria_json 
+		WHERE id = @id`, r.projectID))
 
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "eval_id", Value: eval.ID},
@@ -406,7 +379,7 @@ func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT p.id as project_id, e.id, e.judge_id, e.status, e.criteria, e.total_score, e.comment, e.created_at FROM `%s.%s.projects` p, UNNEST(p.evaluations) e WHERE e.id = @eval_id LIMIT 1", r.projectID, r.datasetID))
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.hackathon_judge.evaluations` WHERE id = @id LIMIT 1", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "eval_id", Value: id},
 	}
@@ -452,7 +425,7 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT evaluations FROM `%s.%s.projects` WHERE id = @project_id LIMIT 1", r.projectID, r.datasetID))
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.hackathon_judge.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "project_id", Value: projectID},
 	}

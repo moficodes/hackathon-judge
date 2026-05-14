@@ -25,13 +25,14 @@ async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     Returns:
         A JSON string containing the evaluation results.
     """
-    template = os.getenv("SANDBOX_TEMPLATE", "sandbox-hackathon-judge-template")
-    namespace = os.getenv("SANDBOX_NAMESPACE", "hackathon-judge")
-
-    template = os.getenv("SANDBOX_TEMPLATE", "sandbox-hackathon-judge-template")
-    namespace = os.getenv("SANDBOX_NAMESPACE", "hackathon-judge")
+    template = os.getenv("SANDBOX_TEMPLATE")
+    if not template:
+        raise ValueError("SANDBOX_TEMPLATE environment variable is required")
+    namespace = os.getenv("SANDBOX_NAMESPACE")
+    if not namespace:
+        raise ValueError("SANDBOX_NAMESPACE environment variable is required")
     config = SandboxDirectConnectionConfig(
-        api_url=f"http://sandbox-router-svc.${namespace}.cluster.svc.local:8080"
+        api_url=f"http://sandbox-router-svc.{namespace}.cluster.svc.local:8080"
     )
     async with AsyncSandboxClient(connection_config=config) as client:
         sandbox = await client.create_sandbox(
@@ -60,7 +61,7 @@ async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
         except Exception as e:
             return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
         finally:
-            await client.delete_sandbox(sandbox.name)
+            await client.delete_sandbox(claim_name=sandbox.claim_name, namespace=namespace)
 
 class EvaluationScore(BaseModel):
     name: str = Field(description="The name of the scoring criteria category.")

@@ -13,6 +13,7 @@ FROM debian:bookworm-slim
 ENV NODE_VERSION=24.15.0
 ENV PYTHON_VERSION=3.14.4
 ENV GO_PATH=/usr/local/go
+ENV SANDBOX_DIR=/app
 ENV GEMINI_CLI_TRUST_WORKSPACE=true
 ENV PATH=$PATH:$GO_PATH/bin:/home/sandbox/.local/bin
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/lib/playwright
