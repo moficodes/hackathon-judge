@@ -36,6 +36,8 @@ spec:
               key: GOOGLE_CLOUD_PROJECT
         - name: GOOGLE_CLOUD_LOCATION
           value: "global"
+        - name: GOOGLE_GENAI_USE_VERTEXAI
+          value: "True"
         - name: TASKS_SUBSCRIPTION
           valueFrom:
             configMapKeyRef:

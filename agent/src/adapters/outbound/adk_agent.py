@@ -78,7 +78,7 @@ class ADKAgentAdapter(AgentService):
     def __init__(self):
         self.agent = Agent(
             name="hackathon_judge",
-            model="vertexai/gemini-3-flash-preview",
+            model="gemini-3-flash-preview",
             instruction="""
 You are an expert hackathon judge evaluating a project.
 Analyze the provided submission and evaluate it against the given criteria and rubric.
