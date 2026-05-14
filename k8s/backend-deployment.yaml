@@ -44,3 +44,8 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: RESULTS_SUB
+        - name: BQ_DATASET
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: BQ_DATASET
