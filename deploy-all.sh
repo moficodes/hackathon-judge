@@ -778,7 +778,7 @@ if [ "$RUN_K8S" = "true" ]; then
   kubectl apply -f k8s/httproute.yaml
 
   log_info "Waiting for all deployments to be ready..."
-  for deploy in backend-deployment frontend-deployment agent-deployment; do
+  for deploy in backend frontend agent; do
     if ! kubectl rollout status deployment/$deploy -n hackathon-judge --timeout=300s; then
       log_error "$deploy failed to reach ready state within 5 minutes."
       exit 1
