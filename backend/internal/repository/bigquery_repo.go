@@ -61,7 +61,7 @@ func (r *BigQueryRepo) mapBQHackathon(bqH bqHackathon) (domain.Hackathon, error)
 func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathons.hackathons`", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathon_judge.hackathons`", r.projectID))
 	it, err := query.Read(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read hackathons: %w", err)
@@ -89,7 +89,7 @@ func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
 func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathons.hackathons` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathon_judge.hackathons` WHERE id = @id LIMIT 1", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
 	}
@@ -146,7 +146,7 @@ func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
 func (r *BigQueryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.projects.projects` WHERE hackathon_id = @hackathon_id", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathon_judge.projects` WHERE hackathon_id = @hackathon_id", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "hackathon_id", Value: hackathonID},
 	}
@@ -173,7 +173,7 @@ func (r *BigQueryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, e
 func (r *BigQueryRepo) GetProjectByID(id string) (domain.Project, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.projects.projects` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathon_judge.projects` WHERE id = @id LIMIT 1", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
 	}
@@ -197,7 +197,7 @@ func (r *BigQueryRepo) GetProjectByID(id string) (domain.Project, error) {
 func (r *BigQueryRepo) UpdateScore(projectID string, score float64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("UPDATE `%s.projects.projects` SET score = @score WHERE id = @id", r.projectID))
+	query := r.client.Query(fmt.Sprintf("UPDATE `%s.hackathon_judge.projects` SET score = @score WHERE id = @id", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "score", Value: score},
 		{Name: "id", Value: projectID},
@@ -241,7 +241,7 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		eval.CreatedAt = time.Now()
 	}
 
-	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.evaluations.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, PARSE_JSON(@criteria_json))", r.projectID))
+	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.hackathon_judge.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, PARSE_JSON(@criteria_json))", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: eval.ID},
 		{Name: "project_id", Value: eval.ProjectID},
@@ -277,7 +277,7 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 	}
 
 	query := r.client.Query(fmt.Sprintf(`
-		UPDATE %s.evaluations.evaluations 
+		UPDATE %s.hackathon_judge.evaluations 
 		SET status = @status, 
 		    total_score = @total_score, 
 		    comment = @comment, 
@@ -310,7 +310,7 @@ func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.evaluations.evaluations` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.hackathon_judge.evaluations` WHERE id = @id LIMIT 1", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
 	}
@@ -349,7 +349,7 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.evaluations.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.hackathon_judge.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "project_id", Value: projectID},
 	}
