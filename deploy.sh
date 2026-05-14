@@ -206,7 +206,7 @@ is_val_complete() {
 
 # Check if .env is complete and contains no placeholders
 is_env_complete=true
-for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB BQ_DATASET; do
+for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB; do
   val=""
   eval "val=\${existing_$var:-}"
   if ! is_val_complete "$val"; then
@@ -315,12 +315,8 @@ else
     prompt_var "RESULTS_SUB" "Backend Judging Results Subscription Name" "${existing_RESULTS_SUB:-judging-results-backend-sub}"
   fi
 
-  # BigQuery Dataset
-  if is_val_complete "$existing_BQ_DATASET"; then
-    BQ_DATASET="$existing_BQ_DATASET"
-  else
-    prompt_var "BQ_DATASET" "BigQuery Dataset Name" "${existing_BQ_DATASET:-hackathon_judge}"
-  fi
+  # BigQuery Dataset (Defaulted, not prompted)
+  BQ_DATASET="${existing_BQ_DATASET:-hackathon_judge}"
 
   # Keep backup of old env just in case
   if [ -f "$ENV_FILE" ]; then
@@ -571,6 +567,22 @@ if [ "$RUN_BQ" = "true" ]; then
     fi
   else
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
+  fi
+
+  log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
+  if [ -f "backend/internal/repository/schema.sql" ]; then
+    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/schema.sql | bq query --use_legacy_sql=false
+    log_success "schema.sql successfully applied!"
+  else
+    log_warning "schema.sql not found. Skipping schema setup."
+  fi
+
+  log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
+  if [ -f "backend/internal/repository/seeds.sql" ]; then
+    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq query --use_legacy_sql=false
+    log_success "seeds.sql successfully applied!"
+  else
+    log_warning "seeds.sql not found. Skipping seed ingestion."
   fi
 
   # Map CSV files to their BigQuery tables
