@@ -716,6 +716,9 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Applying Kubernetes Service Accounts..."
   kubectl apply -f k8s/service-account.yaml
 
+  log_info "Applying RBAC..."
+  kubectl apply -f k8s/rbac.yaml
+
   log_info "Fetching PROJECT_NUMBER for IAM bindings..."
   PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
   NAMESPACE="hackathon-judge"

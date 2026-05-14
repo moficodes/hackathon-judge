@@ -61,7 +61,7 @@ async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
         except Exception as e:
             return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
         finally:
-            await client.delete_sandbox(sandbox.name)
+            await client.delete_sandbox(claim_name=sandbox.claim_name, namespace=namespace)
 
 class EvaluationScore(BaseModel):
     name: str = Field(description="The name of the scoring criteria category.")
