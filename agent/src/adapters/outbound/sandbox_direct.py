@@ -163,7 +163,8 @@ The JSON must strictly adhere to this schema:
 }
 """                    
             )
-            response = sandbox.commands.run(f"gemini --yolo '{prompt}'")
+            safe_prompt = shlex.quote(prompt)
+            response = sandbox.commands.run(f"gemini --yolo {safe_prompt}")
             logger.info(response.stdout)
             # Read the JSON evaluation
             result_json = sandbox.files.read("evaluation.json")
