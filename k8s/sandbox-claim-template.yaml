@@ -8,7 +8,6 @@ spec:
     metadata:
       labels:
         app: sandbox
-        sandbox: sandbox-python-computeruse
       annotations:
         test: "yes"
     spec:
@@ -27,3 +26,5 @@ spec:
           value: "global"
         - name: GOOGLE_GENAI_USE_VERTEXAI
           value: "true"
+        - name: SANDBOX_DIR
+          value: "/app"
