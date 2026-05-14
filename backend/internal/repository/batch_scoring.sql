@@ -1,52 +1,52 @@
-SET @@dataset_project_id = '<<YOUR_PROJECT_ID>>';
-SET @@dataset_id = 'hackathon-judge';
+-- This query is intended to be run on-demand for a specific project.
+-- The calling application (e.g. Go backend) should provide the @project_id parameter.
 
-DECLARE current_run_time TIMESTAMP;
-SET current_run_time = CURRENT_TIMESTAMP();
-
-INSERT INTO `hackathon_judge.evaluations` (id, project_id, judge_id, criteria, created_at)
-WITH LastRun AS (
-  SELECT COALESCE(MAX(processing_date), TIMESTAMP('1970-01-01')) AS last_date
-  FROM `hackathon_judge.projects`
-),
-NewObjects AS (
-  SELECT uri, ref, updated, REGEXP_EXTRACT(uri, r'([^/]+)$') AS filename
-  FROM `hackathon_judge.submissions_objects`
-  WHERE updated > (SELECT last_date FROM LastRun)
-    AND updated <= current_run_time
-    AND uri LIKE '%README%' -- TODO: Confirm this is what we want
-),
-NewProjects AS (
-  SELECT p.id AS project_id, p.name, o.uri, o.updated
-  FROM `hackathon_judge.projects` p
-  JOIN NewObjects o ON p.name = o.filename
-),
-CriteriaToUse AS (
-  SELECT DISTINCT c.name, c.prompt, c.weight
-  FROM `hackathon_judge.evaluations`, UNNEST(criteria) c
-)
-SELECT
-  GENERATE_UUID() AS id,
-  np.project_id,
-  'AI_JUDGE' AS judge_id,
-  ARRAY(
-    SELECT AS STRUCT
-      ctu.name,
-      ctu.prompt,
+MERGE `hackathon_judge.projects` t
+USING (
+  WITH ProjectInfo AS (
+    SELECT p.id, p.readme_ref, p.hackathon_id, p.evaluations
+    FROM `hackathon_judge.projects` p
+    WHERE p.id = @project_id
+  ),
+  CriteriaToScore AS (
+    SELECT c.id, c.name, c.description, c.max_score
+    FROM `hackathon_judge.hackathons` h, UNNEST(h.criteria) c
+    JOIN ProjectInfo pi ON h.id = pi.hackathon_id
+  ),
+  Scored AS (
+    SELECT
+      id, name, description, max_score,
       AI.SCORE(
-        prompt => (ctu.prompt, OBJ.GET_ACCESS_URL(np.ref, 'r'))
-      ) AS score,
-      ctu.weight
-    FROM CriteriaToUse ctu
-  ) AS criteria,
-  current_run_time AS created_at
-FROM NewProjects np;
+        prompt => (description, OBJ.GET_ACCESS_URL((SELECT readme_ref FROM ProjectInfo), 'r'))
+      ) as score
+    FROM CriteriaToScore
+  ),
+  NewEval AS (
+    SELECT
+      'BQ_JUDGE' as judge_id,
+      ARRAY(SELECT AS STRUCT id, name, description, score, max_score FROM Scored) as criteria,
+      (SELECT SUM(score) FROM Scored) as total_score,
+      'Automated evaluation' as comment,
+      CURRENT_TIMESTAMP() as created_at
+  )
+  SELECT pi.id, ARRAY_CONCAT(pi.evaluations, [ne]) as new_evaluations
+  FROM ProjectInfo pi
+  CROSS JOIN NewEval ne
+) s
+ON t.id = s.id
+WHEN MATCHED THEN
+  UPDATE SET evaluations = s.new_evaluations;
 
-UPDATE `hackathon_judge.projects`
-SET processing_date = current_run_time
-WHERE id IN (
-  SELECT project_id
-  FROM `hackathon_judge.evaluations`
-  WHERE judge_id = 'AI_JUDGE' AND created_at = current_run_time
-);
+-- sample Hardcoded scoring for one project
+UPDATE `hackathon_judge.projects` p
+SET evaluations = ARRAY_CONCAT(evaluations, [
+  STRUCT(
+    'BQ_JUDGE' as judge_id,
+    [STRUCT('crit_clean' as id, 'Clean Code' as name, 'Repository is well-documented with a clear README.' as description, AI.SCORE(prompt => ('Repository is well-documented with a clear README.', OBJ.GET_ACCESS_URL(p.readme_ref, 'r'))) as score, 2.0 as max_score)],
+    2.0 as total_score,
+    'Hardcoded test evaluation' as comment,
+    CURRENT_TIMESTAMP() as created_at
+  )
+])
+WHERE p.id = '14710f6b-dbf7-4055-8106-9dbed109dae2';
 
