@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS `hackathons` (
     description STRING,
     goal STRING,
     status STRING,
-    criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, score FLOAT64, max_score FLOAT64>>,
-    bonus_criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, score FLOAT64, max_score FLOAT64>>
+    criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+    bonus_criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>
 );
 
 -- Projects Table
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
     processing_date TIMESTAMP,
     hackathon_id STRING,
     score FLOAT64,
-    evaluations ARRAY<STRUCT<judge_id STRING, criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, score FLOAT64, max_score FLOAT64>>, total_score FLOAT64, comment STRING, created_at TIMESTAMP>>
+    evaluations ARRAY<STRUCT<id STRING, judge_id STRING, status STRING, criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>, total_score FLOAT64, comment STRING, created_at TIMESTAMP>>
 );
 
 -- -- Evaluations Table
