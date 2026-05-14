@@ -1,10 +1,18 @@
 # src/main.py
+import logging
+
+# Configure logging at the very beginning to ensure all logs are captured correctly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:%(name)s:%(message)s",
+    force=True
+)
+
 from fastapi import FastAPI
 import uvicorn
 import os
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
-import logging
 
 from src.adapters.outbound.adk_agent import ADKAgentAdapter
 from src.adapters.outbound.pubsub_publisher import PubSubPublisherAdapter, MockPubSubPublisherAdapter
@@ -12,8 +20,6 @@ from src.adapters.inbound.pubsub_subscriber import BackgroundSubscriber
 
 # Load environment variables from .env file
 load_dotenv()
-
-logging.basicConfig(level=logging.INFO)
 
 import sys
 
@@ -51,10 +57,14 @@ else:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    print("Starting up Hackathon Judge Agent...")
     await subscriber.start()
+    print("Hackathon Judge Agent started.")
     yield
     # Shutdown
+    print("Shutting down Hackathon Judge Agent...")
     await subscriber.stop()
+    print("Hackathon Judge Agent stopped.")
 
 app = FastAPI(title="Hackathon Judge Agent", lifespan=lifespan)
 

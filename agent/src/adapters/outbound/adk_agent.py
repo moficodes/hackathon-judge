@@ -10,10 +10,10 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 from typing import List
-from k8s_agent_sandbox import AsyncSandboxClient
-from k8s_agent_sandbox.models import SandboxDirectConnectionConfig
+from k8s_agent_sandbox import SandboxClient
+from k8s_agent_sandbox.models import SandboxDirectConnectionConfig, SandboxGatewayConnectionConfig
 
-async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
+def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     """
     Clones a repository into a secure sandbox and uses an autonomous agent to evaluate it 
     against the provided judging criteria.
@@ -31,37 +31,69 @@ async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     namespace = os.getenv("SANDBOX_NAMESPACE")
     if not namespace:
         raise ValueError("SANDBOX_NAMESPACE environment variable is required")
-    config = SandboxDirectConnectionConfig(
-        api_url=f"http://sandbox-router-svc.{namespace}.cluster.svc.local:8080"
-    )
-    async with AsyncSandboxClient(connection_config=config) as client:
-        sandbox = await client.create_sandbox(
-            template=template,
-            namespace=namespace,
+    client = SandboxClient(
+        connection_config=SandboxGatewayConnectionConfig(
+            gateway_name="sandbox-router-gateway",
+            gateway_namespace=namespace
         )
-        try:
-            # Clone the repo
-            await sandbox.commands.run(f"git clone {github_url} repo")
+    )
+    sandbox = client.create_sandbox(
+        template=template,
+        namespace=namespace,
+    )
+    try:
+        # Clone the repo
+        response = sandbox.commands.run(f"git clone {github_url} repo")
+        # Write criteria to markdown file
+        response = sandbox.files.write("criteria.md", judging_criteria)
+        # Invoke gemini CLI
+        prompt = (
+"""
+Identity & Objective:
+You are an elite, highly critical Hackathon Judge and Technical Auditor. Your core mission is to aggressively cross-examine the project's markdown documentation/claims against the actual source code present in the repository. You are looking for inflation, missing implementations, or outright contradictions between what the team *claims* they built and what is *actually* written in the code.
 
-            # Write criteria to markdown file
-            await sandbox.files.write("criteria.md", judging_criteria)
+Evaluation Framework:
+1. Load and thoroughly read the evaluation rubric provided in `criteria.md`.
+2. Inspect the codebase in the repository root directory. 
+3. Execute the project's build, run, or test scripts if available to verify functional claims.
 
-            # Invoke gemini CLI
-            prompt = (
-                "Evaluate the codebase in the repo directory against the criteria in criteria.md. "
-                "Analyze the code, run it if necessary, and write your final findings as a JSON object "
-                "to evaluation.json. The JSON must have 'scores' (list of {name, score, reasoning}), "
-                "'total_score', 'overall_comments', and 'confidence_score'."
+Verification Checklist (Look for these common discrepancies):
+- "Ghost Features": Claims of advanced functionality in the README that are actually empty stubs, hardcoded mock data, or TODO comments in the code.
+- "Plagiarism/Boilerplate": Distinguish between core hackathon work and pre-existing templates or heavy library scaffolding.
+- "Fragility": Code that technically works but is hardcoded to a single user, API response, or test case, violating the spirit of the criteria.
+
+Execution Steps:
+1. Static Analysis: Scan all major files, architecture, and logic pathways.
+2. Dynamic Validation: Locate any test suites or execution scripts. Attempt to run them. Note if they pass, fail, or if no tests exist.
+3. Discrepancy Log: For every score, explicitly tie your reasoning to specific files, functions, or lines of code.
+
+Output Specification:
+Write your final evaluation strictly as a valid JSON object directly to `evaluation.json`. Do not include any markdown formatting wrappers (like ```json) inside the file itself. 
+
+The JSON must strictly adhere to this schema:
+{
+  "scores": [
+    {
+      "name": "String (The specific criteria name from criteria.md)",
+      "score": "Number (Based on the criteria scale, e.g., 1-10 or 1-5)",
+      "reasoning": "String (Detailed critique. MUST include explicit file paths, function names, or line numbers verifying or refuting claims. Document test execution results here.)"
+    }
+  ],
+  "total_score": "Number (The sum or calculated average as dictated by criteria.md)",
+  "overall_comments": "String (A holistic summary of the project's engineering quality, documentation accuracy, and overall execution.)",
+  "confidence_score": "Number (Scale of 0.0 to 1.0, reflecting how confidently you were able to review, build, or verify the codebase based on available files/tests.)"
+}
+"""                    
             )
-            await sandbox.commands.run(f"gemini --yolo '{prompt}'")
-
-            # Read the JSON evaluation
-            result_json = await sandbox.files.read("evaluation.json")
-            return result_json
-        except Exception as e:
-            return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
-        finally:
-            await client.delete_sandbox(claim_name=sandbox.claim_name, namespace=namespace)
+        response = sandbox.commands.run(f"gemini --yolo '{prompt}'")
+        print(response.stdout)
+        # Read the JSON evaluation
+        result_json = sandbox.files.read("evaluation.json")
+        return result_json
+    except Exception as e:
+        return f"{{ 'error': 'Sandbox evaluation failed: {str(e)}' }}"
+    finally:
+        sandbox.terminate()
 
 class EvaluationScore(BaseModel):
     name: str = Field(description="The name of the scoring criteria category.")
