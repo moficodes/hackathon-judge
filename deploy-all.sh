@@ -740,6 +740,7 @@ if [ "$RUN_K8S" = "true" ]; then
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.jobUser"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.publisher"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.subscriber"
+  bind_workload_identity "hackathon-judge-sa" "roles/aiplatform.user"
   
   # hackathon-judge-sandbox-sa needs Vertex AI user permissions for judging logic
   bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
@@ -788,7 +789,7 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Waiting for Gateway to get a public IP..."
   GATEWAY_IP=""
   for i in {1..30}; do
-    GATEWAY_IP=$(kubectl get gateway external-http -n hackathon-judge -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+    GATEWAY_IP=$(kubectl get gateway -n hackathon-judge hackathon-judge-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
     if [ -n "$GATEWAY_IP" ]; then
       break
     fi

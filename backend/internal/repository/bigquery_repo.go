@@ -241,7 +241,7 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		eval.CreatedAt = time.Now()
 	}
 
-	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.hackathon_judge.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, PARSE_JSON(@criteria_json))", r.projectID))
+	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.hackathon_judge.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: eval.ID},
 		{Name: "project_id", Value: eval.ProjectID},
@@ -281,7 +281,7 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 		SET status = @status, 
 		    total_score = @total_score, 
 		    comment = @comment, 
-		    criteria_json = PARSE_JSON(@criteria_json) 
+		    criteria_json = @criteria_json 
 		WHERE id = @id`, r.projectID))
 
 	query.Parameters = []bigquery.QueryParameter{
