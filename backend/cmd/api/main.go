@@ -40,6 +40,10 @@ func main() {
 	if subID == "" {
 		log.Fatal("RESULTS_SUB environment variable is required")
 	}
+	datasetID := os.Getenv("BQ_DATASET")
+	if datasetID == "" {
+		datasetID = "hackathon_judge"
+	}
 
 	publisher, err := pubsub.NewGoogleTaskPublisher(projectID, topicID)
 	if err != nil {
@@ -60,7 +64,7 @@ func main() {
 		evalRepo = memRepo
 	} else {
 		log.Println("Successfully initialized BigQuery client.")
-		bqRepo := repository.NewBigQueryRepo(bqClient, projectID)
+		bqRepo := repository.NewBigQueryRepo(bqClient, projectID, datasetID)
 		hackathonRepo = bqRepo
 		projectRepo = bqRepo
 		evalRepo = bqRepo

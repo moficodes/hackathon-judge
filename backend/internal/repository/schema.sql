@@ -25,12 +25,13 @@ TO "connection:us.connection-resource";
 -- Hackathons Table
 CREATE TABLE IF NOT EXISTS `hackathons` (
     id STRING,
-    name STRING,
     title STRING,
     date TIMESTAMP,
     description STRING,
     goal STRING,
-    status STRING
+    status STRING,
+    criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+    bonus_criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>
 );
 
 -- Projects Table
@@ -38,33 +39,35 @@ CREATE TABLE IF NOT EXISTS `projects` (
     id STRING,
     name STRING,
     title STRING,
-    object_ref STRUCT< uri STRING, version STRING, authorizer STRING, details JSON>,
+    url STRING,
+    readme_ref STRUCT< uri STRING, version STRING, authorizer STRING, details JSON>,
     github_url STRING,
     team_name STRING,
     document STRING,
     processing_date TIMESTAMP,
     hackathon_id STRING,
-    score FLOAT64
+    score FLOAT64,
+    evaluations ARRAY<STRUCT<id STRING, judge_id STRING, status STRING, criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>, total_score FLOAT64, comment STRING, created_at TIMESTAMP>>
 );
 
--- Evaluations Table
-CREATE TABLE IF NOT EXISTS `evaluations` (
-    id STRING,
-    project_id STRING,
-    judge_id STRING,
-    criteria ARRAY<STRUCT<name STRING, prompt STRING, score FLOAT64, weight FLOAT64>>,
-    total_score FLOAT64,
-    comment STRING,
-    created_at TIMESTAMP
-);
+-- -- Evaluations Table
+-- CREATE TABLE IF NOT EXISTS `evaluations` (
+--     id STRING,
+--     project_id STRING,
+--     judge_id STRING,
+--     criteria ARRAY<STRUCT<name STRING, prompt STRING, score FLOAT64, weight FLOAT64>>,
+--     total_score FLOAT64,
+--     comment STRING,
+--     created_at TIMESTAMP
+-- );
 
--- Insert sample evaluation criteria with weights
-INSERT INTO `criteria` (name, prompt, weight)
-VALUES
-  ('Documentation', 'How clear, concise and thorough is the documentation?', 0.2),
-  ('Innovation', 'How creative and original is the project?', 0.3),
-  ('Design', 'How well-designed is the user interface and experience?', 0.2),
-  ('Impact', 'What is the potential impact of the project?', 0.3);
+-- -- Insert sample evaluation criteria with weights
+-- INSERT INTO `criteria` (name, prompt, weight)
+-- VALUES
+--   ('Documentation', 'How clear, concise and thorough is the documentation?', 0.2),
+--   ('Innovation', 'How creative and original is the project?', 0.3),
+--   ('Design', 'How well-designed is the user interface and experience?', 0.2),
+--   ('Impact', 'What is the potential impact of the project?', 0.3);
 
 
 -- Create an External Table
