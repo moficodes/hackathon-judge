@@ -15,10 +15,19 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
+import sys
+
+def get_required_env(var_name: str) -> str:
+    value = os.getenv(var_name)
+    if not value:
+        print(f"Error: {var_name} environment variable is required", file=sys.stderr)
+        sys.exit(1)
+    return value
+
 # Configuration from Environment Variables
-PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "mofilabs")
-TASKS_SUBSCRIPTION = os.getenv("TASKS_SUBSCRIPTION", "agent-judging-tasks-sub")
-RESULTS_TOPIC = os.getenv("RESULTS_TOPIC", "judging-results")
+PROJECT_ID = get_required_env("GOOGLE_CLOUD_PROJECT")
+TASKS_SUBSCRIPTION = get_required_env("TASKS_SUBSCRIPTION")
+RESULTS_TOPIC = get_required_env("RESULTS_TOPIC")
 USE_MOCK = os.getenv("USE_MOCK_PUBSUB", "false").lower() == "true"
 
 # Dependency Injection setup

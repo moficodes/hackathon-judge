@@ -30,15 +30,15 @@ func main() {
 
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
 	if projectID == "" {
-		projectID = "mofilabs"
+		log.Fatal("GOOGLE_CLOUD_PROJECT environment variable is required")
 	}
 	topicID := os.Getenv("TASKS_TOPIC")
 	if topicID == "" {
-		topicID = "judging-tasks"
+		log.Fatal("TASKS_TOPIC environment variable is required")
 	}
 	subID := os.Getenv("RESULTS_SUB")
 	if subID == "" {
-		subID = "backend-judging-results-sub"
+		log.Fatal("RESULTS_SUB environment variable is required")
 	}
 	datasetID := os.Getenv("BQ_DATASET")
 	if datasetID == "" {

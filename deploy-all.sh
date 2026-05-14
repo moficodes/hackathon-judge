@@ -206,7 +206,7 @@ is_val_complete() {
 
 # Check if .env is complete and contains no placeholders
 is_env_complete=true
-for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB; do
+for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB BQ_DATASET; do
   val=""
   eval "val=\${existing_$var:-}"
   if ! is_val_complete "$val"; then
@@ -315,8 +315,12 @@ else
     prompt_var "RESULTS_SUB" "Backend Judging Results Subscription Name" "${existing_RESULTS_SUB:-judging-results-backend-sub}"
   fi
 
-  # BigQuery Dataset (Defaulted, not prompted)
-  BQ_DATASET="${existing_BQ_DATASET:-hackathon_judge}"
+  # BigQuery Dataset
+  if is_val_complete "$existing_BQ_DATASET"; then
+    BQ_DATASET="$existing_BQ_DATASET"
+  else
+    prompt_var "BQ_DATASET" "BigQuery Dataset Name" "${existing_BQ_DATASET:-hackathon_judge}"
+  fi
 
   # Keep backup of old env just in case
   if [ -f "$ENV_FILE" ]; then
@@ -569,22 +573,6 @@ if [ "$RUN_BQ" = "true" ]; then
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
   fi
 
-  log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
-  if [ -f "backend/internal/repository/schema.sql" ]; then
-    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/schema.sql | bq query --use_legacy_sql=false
-    log_success "schema.sql successfully applied!"
-  else
-    log_warning "schema.sql not found. Skipping schema setup."
-  fi
-
-  log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
-  if [ -f "backend/internal/repository/seeds.sql" ]; then
-    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq query --use_legacy_sql=false
-    log_success "seeds.sql successfully applied!"
-  else
-    log_warning "seeds.sql not found. Skipping seed ingestion."
-  fi
-
   # Map CSV files to their BigQuery tables
   CSV_TABLE_MAP=(
     "hackathons.csv:hackathons"
@@ -755,6 +743,7 @@ if [ "$RUN_K8S" = "true" ]; then
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.jobUser"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.publisher"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.subscriber"
+  bind_workload_identity "hackathon-judge-sa" "roles/aiplatform.user"
   
   # hackathon-judge-sandbox-sa needs Vertex AI user permissions for judging logic
   bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
@@ -772,6 +761,51 @@ if [ "$RUN_K8S" = "true" ]; then
     exit 1
   fi
 
+  log_info "Applying Sandbox Claim Template..."
+  envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
+
+  log_info "Applying Backend Service and Deployment..."
+  kubectl apply -f k8s/backend-service.yaml
+  envsubst < k8s/backend-deployment.yaml | kubectl apply -f -
+
+  log_info "Applying Agent Deployment..."
+  envsubst < k8s/agent-deployment.yaml | kubectl apply -f -
+
+  log_info "Applying Frontend Service and Deployment..."
+  kubectl apply -f k8s/frontend-service.yaml
+  envsubst < k8s/frontend-deployment.yaml | kubectl apply -f -
+
+  log_info "Applying Gateway..."
+  kubectl apply -f k8s/gateway.yaml
+
+  log_info "Applying HTTPRoute..."
+  kubectl apply -f k8s/httproute.yaml
+
+  log_info "Waiting for all deployments to be ready..."
+  for deploy in backend frontend agent; do
+    if ! kubectl rollout status deployment/$deploy -n hackathon-judge --timeout=300s; then
+      log_error "$deploy failed to reach ready state within 5 minutes."
+      exit 1
+    fi
+  done
+
+  log_info "Waiting for Gateway to get a public IP..."
+  GATEWAY_IP=""
+  for i in {1..30}; do
+    GATEWAY_IP=$(kubectl get gateway -n hackathon-judge hackathon-judge-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+    if [ -n "$GATEWAY_IP" ]; then
+      break
+    fi
+    log_info "  Still waiting for Gateway IP... (attempt $i/30)"
+    sleep 10
+  done
+
+  if [ -z "$GATEWAY_IP" ]; then
+    log_warning "Gateway did not get a public IP within 5 minutes. You may need to check the Gateway status manually."
+  else
+    log_success "Gateway is available at public IP: $GATEWAY_IP"
+  fi
+
   log_success "Kubernetes resources applied and verified!"
 else
   log_info "Skipping Step 10: Kubernetes deployment (Bypassed by CLI flag)."
@@ -787,4 +821,7 @@ echo "  https://console.cloud.google.com/artifacts/docker/${GOOGLE_CLOUD_PROJECT
 log_info "To view your GKE Autopilot cluster, visit:"
 echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOGLE_CLOUD_PROJECT}"
 log_info "The Sandbox Router is deployed and available at: sandbox-router-svc.hackathon-judge.svc.cluster.local"
+if [ -n "${GATEWAY_IP:-}" ]; then
+  log_info "The application is publicly available at: http://${GATEWAY_IP}"
+fi
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"
