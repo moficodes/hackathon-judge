@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 import sys
 
@@ -100,7 +101,7 @@ async def upload_file(file: UploadFile = File(...)):
     Receives a file and saves it to the /app directory in the sandbox.
     """
     try:
-        logging.info(f"--- UPLOAD_FILE CALLED: Attempting to save '{file.filename}' ---")
+        logger.info("Attempting to save '%s'", file.filename)
         file_path = os.path.join(SANDBOX_DIR, file.filename)
         
         with open(file_path, "wb") as f:
@@ -111,7 +112,7 @@ async def upload_file(file: UploadFile = File(...)):
             content={"message": f"File '{file.filename}' uploaded successfully."}
         )
     except Exception as e:
-        logging.exception("An error occurred during file upload.") 
+        logger.exception("File upload failed for '%s'", file.filename)
         return JSONResponse(
             status_code=500,
             content={"message": f"File upload failed: {str(e)}"}
@@ -125,11 +126,17 @@ async def download_file(encoded_file_path: str):
     decoded_path = urllib.parse.unquote(encoded_file_path)
     try:
         full_path = get_safe_path(decoded_path)
-    except ValueError:
+    except ValueError as e:
+        logger.warning("Access denied downloading file '%s': %s", decoded_path, e)
         return JSONResponse(status_code=403, content={"message": "Access denied"})
+    except Exception as e:
+        logger.exception("Unexpected error resolving path for download '%s'", decoded_path)
+        return JSONResponse(status_code=500, content={"message": "Internal server error"})
 
     if os.path.isfile(full_path):
         return FileResponse(path=full_path, media_type='application/octet-stream', filename=decoded_path)
+    
+    logger.error("File not found for download: '%s'", full_path)
     return JSONResponse(status_code=404, content={"message": "File not found"})
 
 @app.get("/list/{encoded_file_path:path}", summary="List files in a directory")
