@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import shlex
 import traceback
 from typing import List
 
@@ -46,7 +47,8 @@ Judging Rubric:
 Scoring Criteria:
 {criteria_text}
 """
-            result_json = self._evaluate_repository(request.github_url, judging_criteria)
+            import asyncio
+            result_json = await asyncio.to_thread(self._evaluate_repository, request.github_url, judging_criteria)
             
             try:
                 eval_output_dict = json.loads(result_json)
@@ -118,7 +120,6 @@ Scoring Criteria:
         )
         try:
             # Clone the repo
-            import shlex
             safe_url = shlex.quote(github_url)
             sandbox.commands.run(f"git clone {safe_url} repo")
             # Write criteria to markdown file
@@ -169,6 +170,6 @@ The JSON must strictly adhere to this schema:
             return result_json
         except Exception as e:
             logger.error(f"Sandbox evaluation failed: {str(e)}")
-            return f"{{ \"error\": \"Sandbox evaluation failed: {str(e)}\" }}"
+            return json.dumps({"error": f"Sandbox evaluation failed: {str(e)}"})
         finally:
             sandbox.terminate()
