@@ -10,3 +10,5 @@ data:
   RESULTS_TOPIC: "${RESULTS_TOPIC}"
   TASKS_SUBSCRIPTION: "${TASKS_SUBSCRIPTION}"
   RESULTS_SUB: "${RESULTS_SUB}"
+  SANDBOX_TEMPLATE: "sandbox-hackathon-judge-template"
+  SANDBOX_NAMESPACE: "hackathon-judge"

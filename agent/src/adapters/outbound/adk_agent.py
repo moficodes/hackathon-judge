@@ -32,7 +32,7 @@ async def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     if not namespace:
         raise ValueError("SANDBOX_NAMESPACE environment variable is required")
     config = SandboxDirectConnectionConfig(
-        api_url=f"http://sandbox-router-svc.${namespace}.cluster.svc.local:8080"
+        api_url=f"http://sandbox-router-svc.{namespace}.cluster.svc.local:8080"
     )
     async with AsyncSandboxClient(connection_config=config) as client:
         sandbox = await client.create_sandbox(
