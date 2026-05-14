@@ -12,6 +12,7 @@ spec:
       annotations:
         test: "yes"
     spec:
+      runtimeClassName: gvisor
       serviceAccountName: hackathon-judge-sandbox-sa
       containers:
       - name: hackathon-judge
