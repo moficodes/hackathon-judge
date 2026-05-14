@@ -14,7 +14,7 @@ import os
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
-from src.adapters.outbound.adk_agent import ADKAgentAdapter
+from src.adapters.outbound.sandbox_direct import SandboxDirectAdapter
 from src.adapters.outbound.pubsub_publisher import PubSubPublisherAdapter, MockPubSubPublisherAdapter
 from src.adapters.inbound.pubsub_subscriber import BackgroundSubscriber
 
@@ -37,7 +37,7 @@ RESULTS_TOPIC = get_required_env("RESULTS_TOPIC")
 USE_MOCK = os.getenv("USE_MOCK_PUBSUB", "false").lower() == "true"
 
 # Dependency Injection setup
-agent_service = ADKAgentAdapter()
+agent_service = SandboxDirectAdapter()
 
 if USE_MOCK:
     publisher = MockPubSubPublisherAdapter()
