@@ -46,5 +46,15 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: RESULTS_TOPIC
+        - name: SANDBOX_TEMPLATE
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: SANDBOX_TEMPLATE
+        - name: SANDBOX_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: SANDBOX_NAMESPACE
         - name: USE_MOCK_PUBSUB
           value: "false"

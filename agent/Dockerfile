@@ -9,6 +9,7 @@ RUN uv sync --frozen --no-dev
 FROM python:3.12-alpine
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app"
 COPY --from=builder /app /app
 EXPOSE 8000
-ENTRYPOINT ["python", "src/main.py"]
+ENTRYPOINT ["python", "-m", "src.main"]
