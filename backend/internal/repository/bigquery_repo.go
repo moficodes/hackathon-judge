@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,24 +14,35 @@ import (
 type BigQueryRepo struct {
 	client    *bigquery.Client
 	projectID string
+	datasetID string
 }
 
-func NewBigQueryRepo(client *bigquery.Client, projectID string) *BigQueryRepo {
+func NewBigQueryRepo(client *bigquery.Client, projectID string, datasetID string) *BigQueryRepo {
 	return &BigQueryRepo{
 		client:    client,
 		projectID: projectID,
+		datasetID: datasetID,
 	}
 }
 
+type bqCriterion struct {
+	ID          string  `bigquery:"id"`
+	Name        string  `bigquery:"name"`
+	Description string  `bigquery:"description"`
+	Weight      float64 `bigquery:"weight"`
+	Score       float64 `bigquery:"score"`
+	MaxScore    float64 `bigquery:"max_score"`
+}
+
 type bqHackathon struct {
-	ID            string    `bigquery:"id"`
-	Title         string    `bigquery:"title"`
-	Date          time.Time `bigquery:"date"`
-	Description   string    `bigquery:"description"`
-	Goal          string    `bigquery:"goal"`
-	Status        string    `bigquery:"status"`
-	Criteria      string    `bigquery:"criteria"`
-	BonusCriteria string    `bigquery:"bonus_criteria"`
+	ID            string        `bigquery:"id"`
+	Title         string        `bigquery:"title"`
+	Date          time.Time     `bigquery:"date"`
+	Description   string        `bigquery:"description"`
+	Goal          string        `bigquery:"goal"`
+	Status        string        `bigquery:"status"`
+	Criteria      []bqCriterion `bigquery:"criteria"`
+	BonusCriteria []bqCriterion `bigquery:"bonus_criteria"`
 }
 
 func (r *BigQueryRepo) mapBQHackathon(bqH bqHackathon) (domain.Hackathon, error) {
@@ -45,14 +55,23 @@ func (r *BigQueryRepo) mapBQHackathon(bqH bqHackathon) (domain.Hackathon, error)
 		Status:      bqH.Status,
 	}
 
-	if bqH.Criteria != "" {
-		if err := json.Unmarshal([]byte(bqH.Criteria), &h.Criteria); err != nil {
-			return h, fmt.Errorf("failed to unmarshal criteria: %w", err)
+	h.Criteria = make([]domain.Criterion, len(bqH.Criteria))
+	for i, c := range bqH.Criteria {
+		h.Criteria[i] = domain.Criterion{
+			Name:        c.Name,
+			Weight:      c.Weight,
+			Description: c.Description,
+			MaxScore:    c.MaxScore,
 		}
 	}
-	if bqH.BonusCriteria != "" {
-		if err := json.Unmarshal([]byte(bqH.BonusCriteria), &h.BonusCriteria); err != nil {
-			return h, fmt.Errorf("failed to unmarshal bonus criteria: %w", err)
+
+	h.BonusCriteria = make([]domain.Criterion, len(bqH.BonusCriteria))
+	for i, c := range bqH.BonusCriteria {
+		h.BonusCriteria[i] = domain.Criterion{
+			Name:        c.Name,
+			Weight:      c.Weight,
+			Description: c.Description,
+			MaxScore:    c.MaxScore,
 		}
 	}
 	return h, nil
@@ -61,7 +80,7 @@ func (r *BigQueryRepo) mapBQHackathon(bqH bqHackathon) (domain.Hackathon, error)
 func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathons.hackathons`", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.%s.hackathons`", r.projectID, r.datasetID))
 	it, err := query.Read(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read hackathons: %w", err)
@@ -89,7 +108,7 @@ func (r *BigQueryRepo) GetAll() ([]domain.Hackathon, error) {
 func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.hackathons.hackathons` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.%s.hackathons` WHERE id = @id LIMIT 1", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
 	}
@@ -110,17 +129,37 @@ func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
 	return r.mapBQHackathon(row)
 }
 
+type bqCriteriaScore struct {
+	ID          string  `bigquery:"id"`
+	Name        string  `bigquery:"name"`
+	Description string  `bigquery:"description"`
+	Weight      float64 `bigquery:"weight"`
+	Score       float64 `bigquery:"score"`
+	MaxScore    float64 `bigquery:"max_score"`
+}
+
+type bqNestedEvaluation struct {
+	ID         string            `bigquery:"id"`
+	JudgeID    string            `bigquery:"judge_id"`
+	Status     string            `bigquery:"status"`
+	Criteria   []bqCriteriaScore `bigquery:"criteria"`
+	TotalScore float64           `bigquery:"total_score"`
+	Comment    string            `bigquery:"comment"`
+	CreatedAt  time.Time         `bigquery:"created_at"`
+}
+
 type bqProject struct {
-	ID          string             `bigquery:"id"`
-	Name        string             `bigquery:"name"`
-	Title       string             `bigquery:"title"`
-	URL         string             `bigquery:"url"`
-	GitHubURL   string             `bigquery:"github_url"`
-	TeamName    string             `bigquery:"team_name"`
-	Document    bigquery.NullString `bigquery:"document"`
-	Date        civil.Date         `bigquery:"date"`
-	HackathonID string             `bigquery:"hackathon_id"`
-	Score       float64            `bigquery:"score"`
+	ID          string               `bigquery:"id"`
+	Name        string               `bigquery:"name"`
+	Title       string               `bigquery:"title"`
+	URL         string               `bigquery:"url"`
+	GitHubURL   string               `bigquery:"github_url"`
+	TeamName    string               `bigquery:"team_name"`
+	Document    bigquery.NullString  `bigquery:"document"`
+	Date        civil.Date           `bigquery:"date"`
+	HackathonID string               `bigquery:"hackathon_id"`
+	Score       float64              `bigquery:"score"`
+	Evaluations []bqNestedEvaluation `bigquery:"evaluations"`
 }
 
 func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
@@ -143,10 +182,34 @@ func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
 	}
 }
 
+func mapBQNestedEvaluation(bqEval bqNestedEvaluation, projectID string) domain.Evaluation {
+	criteria := make([]domain.CriteriaScore, len(bqEval.Criteria))
+	for i, c := range bqEval.Criteria {
+		criteria[i] = domain.CriteriaScore{
+			Name:      c.Name,
+			Score:     c.Score,
+			Reasoning: c.Description,
+			MaxScore:  c.MaxScore,
+			Weight:    c.Weight,
+		}
+	}
+
+	return domain.Evaluation{
+		ID:         bqEval.ID,
+		ProjectID:  projectID,
+		JudgeID:    bqEval.JudgeID,
+		Status:     bqEval.Status,
+		Criteria:   criteria,
+		TotalScore: bqEval.TotalScore,
+		Comment:    bqEval.Comment,
+		CreatedAt:  bqEval.CreatedAt,
+	}
+}
+
 func (r *BigQueryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.projects.projects` WHERE hackathon_id = @hackathon_id", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.%s.projects` WHERE hackathon_id = @hackathon_id", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "hackathon_id", Value: hackathonID},
 	}
@@ -173,7 +236,7 @@ func (r *BigQueryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, e
 func (r *BigQueryRepo) GetProjectByID(id string) (domain.Project, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.projects.projects` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT * FROM `%s.%s.projects` WHERE id = @id LIMIT 1", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: id},
 	}
@@ -197,7 +260,7 @@ func (r *BigQueryRepo) GetProjectByID(id string) (domain.Project, error) {
 func (r *BigQueryRepo) UpdateScore(projectID string, score float64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	query := r.client.Query(fmt.Sprintf("UPDATE `%s.projects.projects` SET score = @score WHERE id = @id", r.projectID))
+	query := r.client.Query(fmt.Sprintf("UPDATE `%s.%s.projects` SET score = @score WHERE id = @id", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "score", Value: score},
 		{Name: "id", Value: projectID},
@@ -217,52 +280,65 @@ func (r *BigQueryRepo) UpdateScore(projectID string, score float64) error {
 	return nil
 }
 
-type bqEvaluation struct {
-	ID           string    `bigquery:"id"`
-	ProjectID    string    `bigquery:"project_id"`
-	JudgeID      string    `bigquery:"judge_id"`
-	Status       string    `bigquery:"status"`
-	TotalScore   float64   `bigquery:"total_score"`
-	Comment      string    `bigquery:"comment"`
-	CreatedAt    time.Time `bigquery:"created_at"`
-	CriteriaJSON string    `bigquery:"criteria_json"`
+type bqEvaluationRow struct {
+	ProjectID  string            `bigquery:"project_id"`
+	ID         string            `bigquery:"id"`
+	JudgeID    string            `bigquery:"judge_id"`
+	Status     string            `bigquery:"status"`
+	Criteria   []bqCriteriaScore `bigquery:"criteria"`
+	TotalScore float64           `bigquery:"total_score"`
+	Comment    string            `bigquery:"comment"`
+	CreatedAt  time.Time         `bigquery:"created_at"`
+}
+
+type bqProjectEvaluations struct {
+	Evaluations []bqNestedEvaluation `bigquery:"evaluations"`
 }
 
 func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	criteriaBytes, err := json.Marshal(eval.Criteria)
-	if err != nil {
-		return fmt.Errorf("failed to marshal criteria: %w", err)
-	}
-
 	if eval.CreatedAt.IsZero() {
 		eval.CreatedAt = time.Now()
 	}
 
-	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.evaluations.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, PARSE_JSON(@criteria_json))", r.projectID))
+	bqEval := bqNestedEvaluation{
+		ID:         eval.ID,
+		JudgeID:    eval.JudgeID,
+		Status:     eval.Status,
+		TotalScore: eval.TotalScore,
+		Comment:    eval.Comment,
+		CreatedAt:  eval.CreatedAt,
+	}
+
+	bqEval.Criteria = make([]bqCriteriaScore, len(eval.Criteria))
+	for i, c := range eval.Criteria {
+		bqEval.Criteria[i] = bqCriteriaScore{
+			Name:        c.Name,
+			Score:       c.Score,
+			Description: c.Reasoning,
+			Weight:      c.Weight,
+			MaxScore:    c.MaxScore,
+		}
+	}
+
+	query := r.client.Query(fmt.Sprintf("UPDATE `%s.%s.projects` SET evaluations = ARRAY_CONCAT(evaluations, [@new_eval]) WHERE id = @project_id", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
-		{Name: "id", Value: eval.ID},
+		{Name: "new_eval", Value: bqEval},
 		{Name: "project_id", Value: eval.ProjectID},
-		{Name: "judge_id", Value: eval.JudgeID},
-		{Name: "status", Value: eval.Status},
-		{Name: "total_score", Value: eval.TotalScore},
-		{Name: "comment", Value: eval.Comment},
-		{Name: "created_at", Value: eval.CreatedAt},
-		{Name: "criteria_json", Value: string(criteriaBytes)},
 	}
 
 	job, err := query.Run(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to run insert query: %w", err)
+		return fmt.Errorf("failed to run insert (append) query: %w", err)
 	}
 	status, err := job.Wait(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to wait for insert query: %w", err)
+		return fmt.Errorf("failed to wait for insert (append) query: %w", err)
 	}
 	if status.Err() != nil {
-		return fmt.Errorf("insert query failed: %w", status.Err())
+		return fmt.Errorf("insert (append) query failed: %w", status.Err())
 	}
 	return nil
 }
@@ -271,25 +347,45 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	criteriaBytes, err := json.Marshal(eval.Criteria)
-	if err != nil {
-		return fmt.Errorf("failed to marshal criteria: %w", err)
+	bqEval := bqNestedEvaluation{
+		ID:         eval.ID,
+		JudgeID:    eval.JudgeID,
+		Status:     eval.Status,
+		TotalScore: eval.TotalScore,
+		Comment:    eval.Comment,
+		CreatedAt:  eval.CreatedAt,
+	}
+
+	bqEval.Criteria = make([]bqCriteriaScore, len(eval.Criteria))
+	for i, c := range eval.Criteria {
+		bqEval.Criteria[i] = bqCriteriaScore{
+			Name:        c.Name,
+			Score:       c.Score,
+			Description: c.Reasoning,
+			Weight:      c.Weight,
+			MaxScore:    c.MaxScore,
+		}
 	}
 
 	query := r.client.Query(fmt.Sprintf(`
-		UPDATE %s.evaluations.evaluations 
-		SET status = @status, 
-		    total_score = @total_score, 
-		    comment = @comment, 
-		    criteria_json = PARSE_JSON(@criteria_json) 
-		WHERE id = @id`, r.projectID))
+		UPDATE %s.%s.projects 
+		SET evaluations = ARRAY(
+			SELECT AS STRUCT 
+				e.id,
+				IF(e.id = @eval_id, @updated_eval.judge_id, e.judge_id) as judge_id,
+				IF(e.id = @eval_id, @updated_eval.status, e.status) as status,
+				IF(e.id = @eval_id, @updated_eval.criteria, e.criteria) as criteria,
+				IF(e.id = @eval_id, @updated_eval.total_score, e.total_score) as total_score,
+				IF(e.id = @eval_id, @updated_eval.comment, e.comment) as comment,
+				IF(e.id = @eval_id, @updated_eval.created_at, e.created_at) as created_at
+			FROM UNNEST(evaluations) e
+		)
+		WHERE id = @project_id`, r.projectID, r.datasetID))
 
 	query.Parameters = []bigquery.QueryParameter{
-		{Name: "id", Value: eval.ID},
-		{Name: "status", Value: eval.Status},
-		{Name: "total_score", Value: eval.TotalScore},
-		{Name: "comment", Value: eval.Comment},
-		{Name: "criteria_json", Value: string(criteriaBytes)},
+		{Name: "eval_id", Value: eval.ID},
+		{Name: "updated_eval", Value: bqEval},
+		{Name: "project_id", Value: eval.ProjectID},
 	}
 
 	job, err := query.Run(ctx)
@@ -310,9 +406,9 @@ func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.evaluations.evaluations` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT p.id as project_id, e.id, e.judge_id, e.status, e.criteria, e.total_score, e.comment, e.created_at FROM `%s.%s.projects` p, UNNEST(p.evaluations) e WHERE e.id = @eval_id LIMIT 1", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
-		{Name: "id", Value: id},
+		{Name: "eval_id", Value: id},
 	}
 
 	it, err := query.Read(ctx)
@@ -320,27 +416,34 @@ func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
 		return domain.Evaluation{}, fmt.Errorf("failed to read evaluation: %w", err)
 	}
 
-	var bqEval bqEvaluation
-	err = it.Next(&bqEval)
+	var row bqEvaluationRow
+	err = it.Next(&row)
+	if err == iterator.Done {
+		return domain.Evaluation{}, fmt.Errorf("evaluation not found")
+	}
 	if err != nil {
-		return domain.Evaluation{}, fmt.Errorf("evaluation not found: %w", err)
+		return domain.Evaluation{}, fmt.Errorf("failed to iterate evaluation: %w", err)
 	}
 
-	var criteria []domain.CriteriaScore
-	if bqEval.CriteriaJSON != "" {
-		if err := json.Unmarshal([]byte(bqEval.CriteriaJSON), &criteria); err != nil {
-			return domain.Evaluation{}, fmt.Errorf("failed to unmarshal criteria: %w", err)
+	criteria := make([]domain.CriteriaScore, len(row.Criteria))
+	for i, c := range row.Criteria {
+		criteria[i] = domain.CriteriaScore{
+			Name:      c.Name,
+			Score:     c.Score,
+			Reasoning: c.Description,
+			MaxScore:  c.MaxScore,
+			Weight:    c.Weight,
 		}
 	}
 
 	return domain.Evaluation{
-		ID:         bqEval.ID,
-		ProjectID:  bqEval.ProjectID,
-		JudgeID:    bqEval.JudgeID,
-		Status:     bqEval.Status,
-		TotalScore: bqEval.TotalScore,
-		Comment:    bqEval.Comment,
-		CreatedAt:  bqEval.CreatedAt,
+		ID:         row.ID,
+		ProjectID:  row.ProjectID,
+		JudgeID:    row.JudgeID,
+		Status:     row.Status,
+		TotalScore: row.TotalScore,
+		Comment:    row.Comment,
+		CreatedAt:  row.CreatedAt,
 		Criteria:   criteria,
 	}, nil
 }
@@ -349,7 +452,7 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.evaluations.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT evaluations FROM `%s.%s.projects` WHERE id = @project_id LIMIT 1", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "project_id", Value: projectID},
 	}
@@ -359,34 +462,24 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 		return nil, fmt.Errorf("failed to query evaluations: %w", err)
 	}
 
-	var evaluations []domain.Evaluation
-	for {
-		var bqEval bqEvaluation
-		err := it.Next(&bqEval)
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to iterate evaluations: %w", err)
-		}
+	var row bqProjectEvaluations
+	err = it.Next(&row)
+	if err == iterator.Done {
+		return []domain.Evaluation{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate evaluations: %w", err)
+	}
 
-		var criteria []domain.CriteriaScore
-		if bqEval.CriteriaJSON != "" {
-			if err := json.Unmarshal([]byte(bqEval.CriteriaJSON), &criteria); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal criteria: %w", err)
-			}
-		}
+	evaluations := make([]domain.Evaluation, len(row.Evaluations))
+	for i, e := range row.Evaluations {
+		evaluations[i] = mapBQNestedEvaluation(e, projectID)
+	}
 
-		evaluations = append(evaluations, domain.Evaluation{
-			ID:         bqEval.ID,
-			ProjectID:  bqEval.ProjectID,
-			JudgeID:    bqEval.JudgeID,
-			Status:     bqEval.Status,
-			TotalScore: bqEval.TotalScore,
-			Comment:    bqEval.Comment,
-			CreatedAt:  bqEval.CreatedAt,
-			Criteria:   criteria,
-		})
+	// Sort by CreatedAt DESC (to mimic old DB order)
+	for i := 0; i < len(evaluations)/2; i++ {
+		j := len(evaluations) - i - 1
+		evaluations[i], evaluations[j] = evaluations[j], evaluations[i]
 	}
 
 	return evaluations, nil

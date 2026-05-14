@@ -557,6 +557,22 @@ if [ "$RUN_BQ" = "true" ]; then
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
   fi
 
+  log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
+  if [ -f "backend/internal/repository/schema.sql" ]; then
+    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/schema.sql | bq query --use_legacy_sql=false
+    log_success "schema.sql successfully applied!"
+  else
+    log_warning "schema.sql not found. Skipping schema setup."
+  fi
+
+  log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
+  if [ -f "backend/internal/repository/seeds.sql" ]; then
+    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq query --use_legacy_sql=false
+    log_success "seeds.sql successfully applied!"
+  else
+    log_warning "seeds.sql not found. Skipping seed ingestion."
+  fi
+
   # Map CSV files to their BigQuery tables
   CSV_TABLE_MAP=(
     "hackathons.csv:hackathons"
