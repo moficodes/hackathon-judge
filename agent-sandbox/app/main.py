@@ -89,6 +89,7 @@ async def execute_command(request: ExecuteRequest):
             exit_code=process.returncode
         )
     except Exception as e:
+        logger.exception("Could not execute command, error: '%s'", str(e))
         return ExecuteResponse(
             stdout="",
             stderr=f"Failed to execute command: {str(e)}",
@@ -112,7 +113,7 @@ async def upload_file(file: UploadFile = File(...)):
             content={"message": f"File '{file.filename}' uploaded successfully."}
         )
     except Exception as e:
-        logger.exception("File upload failed for '%s'", file.filename)
+        logger.exception("File upload failed for '%s', error: '%s'", file.filename, str(e))
         return JSONResponse(
             status_code=500,
             content={"message": f"File upload failed: {str(e)}"}
