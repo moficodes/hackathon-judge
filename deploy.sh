@@ -637,6 +637,7 @@ if [ "$RUN_BUILD" = "true" ]; then
     COMMIT_SHA="manual-$(date +%s)"
     IS_DIRTY=true # Non-git workspaces always trigger rebuild
   fi
+  export COMMIT_SHA
 
   log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
   log_info "Registry Repository: $ARTIFACT_REPO_NAME"
