@@ -27,7 +27,7 @@ spec:
         - name: GOOGLE_GENAI_USE_VERTEXAI
           value: "true"
         - name: SANDBOX_DIR
-          value: "/app"
+          value: "/home/sandbox/app"
         livenessProbe:
           httpGet:
             path: /

@@ -44,14 +44,14 @@ class ExecuteResponse(BaseModel):
     exit_code: int
 
 def get_safe_path(file_path: str) -> str:
-    """Sanitizes the file path to ensure it stays within /app."""
+    """Sanitizes the file path to ensure it stays within the sandbox directory."""
     base_dir = os.path.realpath(SANDBOX_DIR)
     # Remove leading slashes to ensure path is relative
     clean_path = file_path.lstrip("/")
     full_path = os.path.realpath(os.path.join(base_dir, clean_path))
 
     if os.path.commonpath([base_dir, full_path]) != base_dir:
-        raise ValueError("Access denied: Path must be within /app")
+        raise ValueError(f"Access denied: Path must be within {SANDBOX_DIR}")
     
     return full_path
 
@@ -76,7 +76,7 @@ async def execute_command(request: ExecuteRequest):
         # Split the command string into a list to safely pass to subprocess
         args = shlex.split(request.command)
         
-        # Execute the command, always from the /app directory
+        # Execute the command from the configured sandbox directory
         process = subprocess.run(
             args,
             capture_output=True,
@@ -99,15 +99,15 @@ async def execute_command(request: ExecuteRequest):
 @app.post("/upload", summary="Upload a file to the sandbox")
 async def upload_file(file: UploadFile = File(...)):
     """
-    Receives a file and saves it to the /app directory in the sandbox.
+    Receives a file and saves it to the sandbox directory.
     """
     try:
         logger.info("Attempting to save '%s'", file.filename)
         file_path = os.path.join(SANDBOX_DIR, file.filename)
-        
+
         with open(file_path, "wb") as f:
             f.write(await file.read())
-            
+
         return JSONResponse(
             status_code=200,
             content={"message": f"File '{file.filename}' uploaded successfully."}
@@ -122,7 +122,7 @@ async def upload_file(file: UploadFile = File(...)):
 @app.get("/download/{encoded_file_path:path}", summary="Download a file from the sandbox")
 async def download_file(encoded_file_path: str):
     """
-    Downloads a specified file from the /app directory in the sandbox.
+    Downloads a specified file from the sandbox directory.
     """
     decoded_path = urllib.parse.unquote(encoded_file_path)
     try:
@@ -136,14 +136,14 @@ async def download_file(encoded_file_path: str):
 
     if os.path.isfile(full_path):
         return FileResponse(path=full_path, media_type='application/octet-stream', filename=decoded_path)
-    
+
     logger.error("File not found for download: '%s'", full_path)
     return JSONResponse(status_code=404, content={"message": "File not found"})
 
 @app.get("/list/{encoded_file_path:path}", summary="List files in a directory")
 async def list_files(encoded_file_path: str):
     """
-    Lists the contents of a directory under the /app directory in the sandbox.
+    Lists the contents of a directory under the sandbox directory.
     """
     decoded_path = urllib.parse.unquote(encoded_file_path)
     try:
@@ -153,7 +153,7 @@ async def list_files(encoded_file_path: str):
 
     if not os.path.isdir(full_path):
         return JSONResponse(status_code=404, content={"message": "Path is not a directory"})
-    
+
     try:
         entries = []
         with os.scandir(full_path) as it:
@@ -172,7 +172,7 @@ async def list_files(encoded_file_path: str):
 @app.get("/exists/{encoded_file_path:path}", summary="Check if the relative path exists")
 async def exists(encoded_file_path: str):
     """
-    Checks if a specified file or directory exists under the /app directory in the sandbox.
+    Checks if a specified file or directory exists under the sandbox directory.
     """
     decoded_path = urllib.parse.unquote(encoded_file_path)
     try:
