@@ -60,3 +60,9 @@ spec:
               key: SANDBOX_NAMESPACE
         - name: USE_MOCK_PUBSUB
           value: "false"
+        - name: AGENT_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: AGENT_TYPE
+              optional: true
