@@ -166,7 +166,7 @@ The JSON must strictly adhere to this schema:
             safe_prompt = shlex.quote(prompt)
             
             # Temporary mock for isolation
-            mock_json = '''{
+            mock_json = """{
   "scores": [
     {
       "name": "Innovation",
@@ -177,14 +177,16 @@ The JSON must strictly adhere to this schema:
   "total_score": 8.0,
   "overall_comments": "This is a mock evaluation to test the sandbox.",
   "confidence_score": 1.0
-}'''
+}"""
             mock_safe = shlex.quote(mock_json)
-            response = sandbox.commands.run(f"echo {mock_safe} > evaluation.json")
+            response = sandbox.files.write('evaluation.json', mock_safe)
+            response = sandbox.commands.run("pwd")
+            print(response.stdout)
+            print(response.stderr)
             # response = sandbox.commands.run(f"gemini --yolo {safe_prompt}")
-            
-            logger.info(response.stdout)
             # Read the JSON evaluation
             result_json = sandbox.files.read("evaluation.json")
+            print(result_json)
             return result_json
         except Exception as e:
             logger.error(f"Sandbox evaluation failed: {str(e)}")
