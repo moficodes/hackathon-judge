@@ -285,7 +285,7 @@ type bqEvaluationRow struct {
 	ID         string            `bigquery:"id"`
 	JudgeID    string            `bigquery:"judge_id"`
 	Status     string            `bigquery:"status"`
-	Criteria   []bqCriteriaScore `bigquery:"criteria"`
+	Criteria   []bqCriteriaScore `bigquery:"criteria_json"`
 	TotalScore float64           `bigquery:"total_score"`
 	Comment    string            `bigquery:"comment"`
 	CreatedAt  time.Time         `bigquery:"created_at"`
@@ -303,10 +303,36 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		eval.CreatedAt = time.Now()
 	}
 
+	bqEval := bqNestedEvaluation{
+		ID:         eval.ID,
+		JudgeID:    eval.JudgeID,
+		Status:     eval.Status,
+		TotalScore: eval.TotalScore,
+		Comment:    eval.Comment,
+		CreatedAt:  eval.CreatedAt,
+	}
+
+	bqEval.Criteria = make([]bqCriteriaScore, len(eval.Criteria))
+	for i, c := range eval.Criteria {
+		bqEval.Criteria[i] = bqCriteriaScore{
+			Name:        c.Name,
+			Score:       c.Score,
+			Description: c.Reasoning,
+			Weight:      c.Weight,
+			MaxScore:    c.MaxScore,
+		}
+	}
+
 	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.hackathon_judge.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
 	query.Parameters = []bigquery.QueryParameter{
-		{Name: "new_eval", Value: bqEval},
+		{Name: "id", Value: eval.ID},
 		{Name: "project_id", Value: eval.ProjectID},
+		{Name: "judge_id", Value: eval.JudgeID},
+		{Name: "status", Value: eval.Status},
+		{Name: "total_score", Value: eval.TotalScore},
+		{Name: "comment", Value: eval.Comment},
+		{Name: "created_at", Value: eval.CreatedAt},
+		{Name: "criteria_json", Value: bqEval.Criteria},
 	}
 
 	job, err := query.Run(ctx)
@@ -356,9 +382,11 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 		WHERE id = @id`, r.projectID))
 
 	query.Parameters = []bigquery.QueryParameter{
-		{Name: "eval_id", Value: eval.ID},
-		{Name: "updated_eval", Value: bqEval},
-		{Name: "project_id", Value: eval.ProjectID},
+		{Name: "status", Value: eval.Status},
+		{Name: "total_score", Value: eval.TotalScore},
+		{Name: "comment", Value: eval.Comment},
+		{Name: "criteria_json", Value: bqEval.Criteria},
+		{Name: "id", Value: eval.ID},
 	}
 
 	job, err := query.Run(ctx)
@@ -435,24 +463,38 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 		return nil, fmt.Errorf("failed to query evaluations: %w", err)
 	}
 
-	var row bqProjectEvaluations
-	err = it.Next(&row)
-	if err == iterator.Done {
-		return []domain.Evaluation{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to iterate evaluations: %w", err)
-	}
+	var evaluations []domain.Evaluation
+	for {
+		var row bqEvaluationRow
+		err = it.Next(&row)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate evaluations: %w", err)
+		}
 
-	evaluations := make([]domain.Evaluation, len(row.Evaluations))
-	for i, e := range row.Evaluations {
-		evaluations[i] = mapBQNestedEvaluation(e, projectID)
-	}
+		criteria := make([]domain.CriteriaScore, len(row.Criteria))
+		for i, c := range row.Criteria {
+			criteria[i] = domain.CriteriaScore{
+				Name:      c.Name,
+				Score:     c.Score,
+				Reasoning: c.Description,
+				MaxScore:  c.MaxScore,
+				Weight:    c.Weight,
+			}
+		}
 
-	// Sort by CreatedAt DESC (to mimic old DB order)
-	for i := 0; i < len(evaluations)/2; i++ {
-		j := len(evaluations) - i - 1
-		evaluations[i], evaluations[j] = evaluations[j], evaluations[i]
+		evaluations = append(evaluations, domain.Evaluation{
+			ID:         row.ID,
+			ProjectID:  row.ProjectID,
+			JudgeID:    row.JudgeID,
+			Status:     row.Status,
+			TotalScore: row.TotalScore,
+			Comment:    row.Comment,
+			CreatedAt:  row.CreatedAt,
+			Criteria:   criteria,
+		})
 	}
 
 	return evaluations, nil
