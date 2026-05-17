@@ -761,11 +761,15 @@ if [ "$RUN_K8S" = "true" ]; then
     exit 1
   fi
 
+  log_info "Applying Sandbox Gateway..."
+  kubectl apply -f k8s/sandbox-gateway.yaml
+
   log_info "Applying Sandbox Claim Template..."
   envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
 
   log_info "Applying Backend Service and Deployment..."
   kubectl apply -f k8s/backend-service.yaml
+  kubectl apply -f k8s/healthcheckpolicy.yaml
   envsubst < k8s/backend-deployment.yaml | kubectl apply -f -
 
   log_info "Applying Agent Deployment..."
@@ -789,21 +793,34 @@ if [ "$RUN_K8S" = "true" ]; then
     fi
   done
 
-  log_info "Waiting for Gateway to get a public IP..."
+  log_info "Waiting for Gateways to get public IPs..."
   GATEWAY_IP=""
+  SANDBOX_GATEWAY_IP=""
   for i in {1..30}; do
-    GATEWAY_IP=$(kubectl get gateway -n hackathon-judge hackathon-judge-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-    if [ -n "$GATEWAY_IP" ]; then
+    if [ -z "$GATEWAY_IP" ]; then
+      GATEWAY_IP=$(kubectl get gateway -n hackathon-judge hackathon-judge-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+    fi
+    if [ -z "$SANDBOX_GATEWAY_IP" ]; then
+      SANDBOX_GATEWAY_IP=$(kubectl get gateway -n hackathon-judge sandbox-router-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+    fi
+    
+    if [ -n "$GATEWAY_IP" ] && [ -n "$SANDBOX_GATEWAY_IP" ]; then
       break
     fi
-    log_info "  Still waiting for Gateway IP... (attempt $i/30)"
+    log_info "  Still waiting for Gateway IPs... (attempt $i/30)"
     sleep 10
   done
 
   if [ -z "$GATEWAY_IP" ]; then
-    log_warning "Gateway did not get a public IP within 5 minutes. You may need to check the Gateway status manually."
+    log_warning "Main Gateway did not get a public IP within 5 minutes."
   else
-    log_success "Gateway is available at public IP: $GATEWAY_IP"
+    log_success "Main Gateway is available at public IP: $GATEWAY_IP"
+  fi
+
+  if [ -z "$SANDBOX_GATEWAY_IP" ]; then
+    log_warning "Sandbox Gateway did not get a public IP within 5 minutes."
+  else
+    log_success "Sandbox Gateway is available at public IP: $SANDBOX_GATEWAY_IP"
   fi
 
   log_success "Kubernetes resources applied and verified!"
@@ -823,5 +840,8 @@ echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOG
 log_info "The Sandbox Router is deployed and available at: sandbox-router-svc.hackathon-judge.svc.cluster.local"
 if [ -n "${GATEWAY_IP:-}" ]; then
   log_info "The application is publicly available at: http://${GATEWAY_IP}"
+fi
+if [ -n "${SANDBOX_GATEWAY_IP:-}" ]; then
+  log_info "The sandbox router is publicly available at: http://${SANDBOX_GATEWAY_IP}"
 fi
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"

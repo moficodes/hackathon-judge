@@ -38,7 +38,7 @@ apiVersion: networking.gke.io/v1 # Specific to GKE
 kind: HealthCheckPolicy
 metadata:
   name: router-health-check-policy
-  namespace: default
+  namespace: hackathon-judge
 spec:
   targetRef:
     group: ""
