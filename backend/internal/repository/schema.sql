@@ -8,7 +8,7 @@ CREATE SCHEMA IF NOT EXISTS `hackathon_judge`;
 
 
 -- Create a Connection Resource
-CREATE CONNECTION IF NOT EXISTS `us.connection-resource`
+CREATE CONNECTION IF NOT EXISTS `<<REGION>>.connection-resource`
 OPTIONS (
   connection_type = 'CLOUD_RESOURCE'
 );
@@ -16,11 +16,11 @@ OPTIONS (
 -- Grant permissions for the connection resource
 GRANT `roles/aiplatform.user`
 ON PROJECT `<<YOUR PROJECT ID>>`
-TO "connection:us.connection-resource";
+TO "connection:<<REGION>>.connection-resource";
 
 GRANT `roles/storage.objectViewer`
 ON PROJECT `<<YOUR PROJECT ID>>`
-TO "connection:us.connection-resource";
+TO "connection:<<REGION>>.connection-resource";
 
 -- Hackathons Table
 CREATE TABLE IF NOT EXISTS `hackathons` (
@@ -73,10 +73,10 @@ CREATE TABLE IF NOT EXISTS `projects` (
 -- Create an External Table
 -- TODO: subatin
 CREATE EXTERNAL TABLE IF NOT EXISTS `submissions_objects`
-WITH CONNECTION `us.connection-resource`
+WITH CONNECTION `<<REGION>>.connection-resource`
 OPTIONS (
   object_metadata = 'SIMPLE',
-  uris = ['gs://stabby-repos/*']
+  uris = ['gs://<<YOUR PROJECT ID>>-stabby/*']
 );
 
 
