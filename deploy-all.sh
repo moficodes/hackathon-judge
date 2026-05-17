@@ -442,6 +442,7 @@ if [ "$RUN_APIS" = "true" ]; then
     "cloudresourcemanager.googleapis.com" # Cloud Resource Manager (Required for project metadata & IAM)
     "iam.googleapis.com"                  # Identity and Access Management (IAM)
     "bigquery.googleapis.com"             # BigQuery (Essential for evaluations analytics)
+    "bigqueryconnection.googleapis.com"   # BigQuery Connection API
   )
 
   log_info "Enabling required services on new project. This might take a minute..."
@@ -559,7 +560,7 @@ if [ "$RUN_BQ" = "true" ]; then
   log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
 
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
-  if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET" &>/dev/null; then
+  if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
     log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
     if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
         --location="$GOOGLE_CLOUD_REGION" \
@@ -571,6 +572,50 @@ if [ "$RUN_BQ" = "true" ]; then
     fi
   else
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
+  fi
+
+  log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
+  if [ -f "backend/internal/repository/schema.sql" ]; then
+    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
+        -e "s/<<REGION>>/${GOOGLE_CLOUD_REGION}/g" \
+        -e "s/hackathon_judge/${BQ_DATASET}/g" \
+        backend/internal/repository/schema.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
+    log_success "schema.sql successfully applied!"
+    
+    log_info "Granting required roles to the BigQuery connection service account..."
+    # Extract the service account created for the connection
+    CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId')
+    
+    if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
+      log_info "  Found Connection Service Account: $CONNECTION_SA"
+      
+      log_info "  Granting roles/aiplatform.user..."
+      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+        --member="serviceAccount:$CONNECTION_SA" \
+        --role="roles/aiplatform.user" \
+        --condition=None >/dev/null 2>&1
+        
+      log_info "  Granting roles/storage.objectViewer..."
+      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+        --member="serviceAccount:$CONNECTION_SA" \
+        --role="roles/storage.objectViewer" \
+        --condition=None >/dev/null 2>&1
+        
+      log_success "Roles granted to connection service account!"
+    else
+      log_error "Could not find service account for BigQuery connection."
+      log_warning "You may need to manually grant roles/aiplatform.user and roles/storage.objectViewer to the connection service account."
+    fi
+  else
+    log_warning "schema.sql not found. Skipping schema setup."
+  fi
+
+  log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
+  if [ -f "backend/internal/repository/seeds.sql" ]; then
+    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
+    log_success "seeds.sql successfully applied!"
+  else
+    log_warning "seeds.sql not found. Skipping seed ingestion."
   fi
 
   # Map CSV files to their BigQuery tables
@@ -586,11 +631,12 @@ if [ "$RUN_BQ" = "true" ]; then
     
     log_info "Checking table: $table_name in dataset $BQ_DATASET..."
     
-    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET.$table_name" &>/dev/null; then
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.$table_name" &>/dev/null; then
       if [ -f "$csv_file" ]; then
         log_info "Ingesting and creating table '$table_name' from CSV '$csv_file'..."
         # Run bq load dynamically detecting schema with autodetect, using pipe | separator
         if bq --project_id="$GOOGLE_CLOUD_PROJECT" load \
+            --location="$GOOGLE_CLOUD_REGION" \
             --source_format=CSV \
             --field_delimiter="|" \
             --autodetect \
