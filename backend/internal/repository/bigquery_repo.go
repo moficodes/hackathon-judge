@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigquery"
-	"cloud.google.com/go/civil"
 	"github.com/moficodes/hackathon-judge/backend/internal/domain"
 	"google.golang.org/api/iterator"
 )
@@ -156,7 +155,7 @@ type bqProject struct {
 	GitHubURL   string               `bigquery:"github_url"`
 	TeamName    string               `bigquery:"team_name"`
 	Document    bigquery.NullString  `bigquery:"document"`
-	Date        civil.Date           `bigquery:"date"`
+	Date        time.Time            `bigquery:"processing_date"`
 	HackathonID string               `bigquery:"hackathon_id"`
 	Score       float64              `bigquery:"score"`
 	Evaluations []bqNestedEvaluation `bigquery:"evaluations"`
@@ -176,7 +175,7 @@ func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
 		GitHubURL:   bqP.GitHubURL,
 		TeamName:    bqP.TeamName,
 		Document:    doc,
-		Date:        bqP.Date.In(time.UTC),
+		Date:        bqP.Date,
 		HackathonID: bqP.HackathonID,
 		Score:       bqP.Score,
 	}
@@ -323,7 +322,7 @@ func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
 		}
 	}
 
-	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.hackathon_judge.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, @criteria_json)", r.projectID))
+	query := r.client.Query(fmt.Sprintf("INSERT INTO `%s.%s.evaluations` (id, project_id, judge_id, status, total_score, comment, created_at, criteria_json) VALUES (@id, @project_id, @judge_id, @status, @total_score, @comment, @created_at, @criteria_json)", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "id", Value: eval.ID},
 		{Name: "project_id", Value: eval.ProjectID},
@@ -374,12 +373,12 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 	}
 
 	query := r.client.Query(fmt.Sprintf(`
-		UPDATE %s.hackathon_judge.evaluations 
+		UPDATE %s.%s.evaluations 
 		SET status = @status, 
 		    total_score = @total_score, 
 		    comment = @comment, 
 		    criteria_json = @criteria_json 
-		WHERE id = @id`, r.projectID))
+		WHERE id = @id`, r.projectID, r.datasetID))
 
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "status", Value: eval.Status},
@@ -407,9 +406,9 @@ func (r *BigQueryRepo) GetEvaluationByID(id string) (domain.Evaluation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.hackathon_judge.evaluations` WHERE id = @id LIMIT 1", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.%s.evaluations` WHERE id = @id LIMIT 1", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
-		{Name: "eval_id", Value: id},
+		{Name: "id", Value: id},
 	}
 
 	it, err := query.Read(ctx)
@@ -453,7 +452,7 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.hackathon_judge.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID))
+	query := r.client.Query(fmt.Sprintf("SELECT id, project_id, judge_id, status, total_score, comment, created_at, criteria_json FROM `%s.%s.evaluations` WHERE project_id = @project_id ORDER BY created_at DESC", r.projectID, r.datasetID))
 	query.Parameters = []bigquery.QueryParameter{
 		{Name: "project_id", Value: projectID},
 	}
