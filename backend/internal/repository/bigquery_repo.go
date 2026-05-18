@@ -179,29 +179,6 @@ func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
 	}
 }
 
-func mapBQNestedEvaluation(bqEval bqNestedEvaluation, projectID string) domain.Evaluation {
-	criteria := make([]domain.CriteriaScore, len(bqEval.Criteria))
-	for i, c := range bqEval.Criteria {
-		criteria[i] = domain.CriteriaScore{
-			Name:      c.Name,
-			Score:     c.Score,
-			Reasoning: c.Description,
-			MaxScore:  c.MaxScore,
-			Weight:    c.Weight,
-		}
-	}
-
-	return domain.Evaluation{
-		ID:         bqEval.ID,
-		ProjectID:  projectID,
-		JudgeID:    bqEval.JudgeID,
-		Status:     bqEval.Status,
-		Criteria:   criteria,
-		TotalScore: bqEval.TotalScore,
-		Comment:    bqEval.Comment,
-		CreatedAt:  bqEval.CreatedAt,
-	}
-}
 
 func (r *BigQueryRepo) GetByHackathonID(hackathonID string) ([]domain.Project, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -286,9 +263,6 @@ type bqEvaluationRow struct {
 	TotalScore float64           `bigquery:"total_score"`
 	Comment    string            `bigquery:"comment"`
 	CreatedAt  time.Time         `bigquery:"created_at"`
-}
-
-type bqProjectEvaluations struct {
 }
 
 func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
