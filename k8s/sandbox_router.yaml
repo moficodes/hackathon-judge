@@ -44,7 +44,7 @@ spec:
         # imagePullPolicy: Never  # Uncomment when using a locally loaded image (kind load / minikube image load)
         env:
         - name: PROXY_TIMEOUT_SECONDS
-          value: "180"
+          value: "600"
         ports:
         - containerPort: 8080
         readinessProbe:
