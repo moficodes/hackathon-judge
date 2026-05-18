@@ -28,6 +28,9 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    timeouts:
+      request: 600s
+      backendRequest: 600s
     backendRefs:
     - name: sandbox-router-svc
       port: 8080
