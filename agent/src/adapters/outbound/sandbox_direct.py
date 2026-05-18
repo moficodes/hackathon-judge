@@ -6,8 +6,7 @@ import shlex
 import traceback
 from typing import List
 
-from k8s_agent_sandbox import SandboxClient
-from k8s_agent_sandbox.models import SandboxGatewayConnectionConfig
+from .sandbox_utils import get_sandbox_client
 from pydantic import ValidationError
 
 from src.core.models.message import AgentRequest, AgentResponse, CategoryScore
@@ -108,12 +107,7 @@ Scoring Criteria:
         namespace = os.getenv("SANDBOX_NAMESPACE")
         if not namespace:
             raise ValueError("SANDBOX_NAMESPACE environment variable is required")
-        client = SandboxClient(
-            connection_config=SandboxGatewayConnectionConfig(
-                gateway_name="sandbox-router-gateway",
-                gateway_namespace=namespace
-            )
-        )
+        client = get_sandbox_client()
         sandbox = client.create_sandbox(
             template=template,
             namespace=namespace,
