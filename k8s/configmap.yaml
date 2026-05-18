@@ -12,5 +12,6 @@ data:
   RESULTS_SUB: "${RESULTS_SUB}"
   SANDBOX_TEMPLATE: "sandbox-hackathon-judge-template"
   SANDBOX_NAMESPACE: "hackathon-judge"
+  SANDBOX_CONNECTION_METHOD: "gateway"
   AGENT_TYPE: "sandbox_direct"
   BQ_DATASET: "${BQ_DATASET}"
