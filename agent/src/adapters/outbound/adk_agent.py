@@ -10,8 +10,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
 from typing import List
-from k8s_agent_sandbox import SandboxClient
-from k8s_agent_sandbox.models import SandboxDirectConnectionConfig, SandboxGatewayConnectionConfig
+from .sandbox_utils import get_sandbox_client
 
 def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     """
@@ -31,12 +30,7 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     namespace = os.getenv("SANDBOX_NAMESPACE")
     if not namespace:
         raise ValueError("SANDBOX_NAMESPACE environment variable is required")
-    client = SandboxClient(
-        connection_config=SandboxGatewayConnectionConfig(
-            gateway_name="sandbox-router-gateway",
-            gateway_namespace=namespace
-        )
-    )
+    client = get_sandbox_client()
     sandbox = client.create_sandbox(
         template=template,
         namespace=namespace,
