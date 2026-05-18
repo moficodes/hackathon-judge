@@ -17,9 +17,10 @@ def get_sandbox_client():
             gateway_namespace=gateway_namespace
         )
     elif method == "router_dns":
-        router_url = os.getenv("SANDBOX_ROUTER_URL")
-        if not router_url:
-            raise ValueError("SANDBOX_ROUTER_URL is required for router_dns connection method")
+        namespace = os.getenv("SANDBOX_NAMESPACE")
+        if not namespace:
+            raise ValueError("SANDBOX_NAMESPACE is required for router_dns connection method")
+        router_url = f"http://sandbox-router-svc.{namespace}.svc.cluster.local:8080"
         config = SandboxDirectConnectionConfig(api_url=router_url)
     elif method == "in_cluster_dns":
         config = SandboxInClusterConnectionConfig(use_pod_ip=False)
