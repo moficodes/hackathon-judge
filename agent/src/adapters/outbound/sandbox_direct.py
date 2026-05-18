@@ -166,23 +166,36 @@ The JSON must strictly adhere to this schema:
             safe_prompt = shlex.quote(prompt)
             
             # Temporary mock for isolation
-            mock_json = """{
+            mock_json = """
+{
   "scores": [
     {
+      "name": "Documentation",
+      "score": 8.5,
+      "reasoning": "The README is thorough and includes setup instructions, but lacks a troubleshooting section."
+    },
+    {
       "name": "Innovation",
-      "score": 8.0,
-      "reasoning": "Mock reasoning for innovation."
+      "score": 9.0,
+      "reasoning": "Uses a novel approach to solve the problem using edge computing."
+    },
+    {
+      "name": "Design",
+      "score": 7.5,
+      "reasoning": "Functional UI, but could use better accessibility features."
+    },
+    {
+      "name": "Impact",
+      "score": 9.5,
+      "reasoning": "High potential for scalability and real-world application."
     }
   ],
-  "total_score": 8.0,
-  "overall_comments": "This is a mock evaluation to test the sandbox.",
-  "confidence_score": 1.0
-}"""
-            mock_safe = shlex.quote(mock_json)
-            response = sandbox.files.write('evaluation.json', mock_safe)
-            response = sandbox.commands.run("pwd")
-            print(response.stdout)
-            print(response.stderr)
+  "total_score": 8.625,
+  "overall_comments": "Overall a very strong project with clear documentation and high innovation.",
+  "confidence_score": 0.95
+}
+"""
+            sandbox.files.write('evaluation.json', mock_json)
             # response = sandbox.commands.run(f"gemini --yolo {safe_prompt}")
             # Read the JSON evaluation
             result_json = sandbox.files.read("evaluation.json")

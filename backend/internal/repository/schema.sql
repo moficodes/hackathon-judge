@@ -50,16 +50,17 @@ CREATE TABLE IF NOT EXISTS `projects` (
     evaluations ARRAY<STRUCT<id STRING, judge_id STRING, status STRING, criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>, total_score FLOAT64, comment STRING, created_at TIMESTAMP>>
 );
 
--- -- Evaluations Table
--- CREATE TABLE IF NOT EXISTS `evaluations` (
---     id STRING,
---     project_id STRING,
---     judge_id STRING,
---     criteria ARRAY<STRUCT<name STRING, prompt STRING, score FLOAT64, weight FLOAT64>>,
---     total_score FLOAT64,
---     comment STRING,
---     created_at TIMESTAMP
--- );
+-- Evaluations Table
+CREATE TABLE IF NOT EXISTS `evaluations` (
+    id STRING,
+    project_id STRING,
+    judge_id STRING,
+    status STRING,
+    criteria_json ARRAY<STRUCT<name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+    total_score FLOAT64,
+    comment STRING,
+    created_at TIMESTAMP
+);
 
 -- -- Insert sample evaluation criteria with weights
 -- INSERT INTO `criteria` (name, prompt, weight)

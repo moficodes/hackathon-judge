@@ -206,7 +206,7 @@ is_val_complete() {
 
 # Check if .env is complete and contains no placeholders
 is_env_complete=true
-for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB; do
+for var in GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_REGION ARTIFACT_REGISTRY_LOCATION CLUSTER_NAME ARTIFACT_REPO_NAME TASKS_TOPIC RESULTS_TOPIC TASKS_SUBSCRIPTION RESULTS_SUB BQ_DATASET; do
   val=""
   eval "val=\${existing_$var:-}"
   if ! is_val_complete "$val"; then
@@ -315,8 +315,12 @@ else
     prompt_var "RESULTS_SUB" "Backend Judging Results Subscription Name" "${existing_RESULTS_SUB:-judging-results-backend-sub}"
   fi
 
-  # BigQuery Dataset (Defaulted, not prompted)
-  BQ_DATASET="${existing_BQ_DATASET:-hackathon_judge}"
+  # BigQuery Dataset
+  if is_val_complete "$existing_BQ_DATASET"; then
+    BQ_DATASET="$existing_BQ_DATASET"
+  else
+    prompt_var "BQ_DATASET" "BigQuery Dataset Name" "${existing_BQ_DATASET:-hackathon_judge}"
+  fi
 
   # Keep backup of old env just in case
   if [ -f "$ENV_FILE" ]; then
@@ -785,6 +789,7 @@ if [ "$RUN_K8S" = "true" ]; then
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.jobUser"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.publisher"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.subscriber"
+  bind_workload_identity "hackathon-judge-sa" "roles/aiplatform.user"
   
   # hackathon-judge-sandbox-sa needs Vertex AI user permissions for judging logic
   bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
