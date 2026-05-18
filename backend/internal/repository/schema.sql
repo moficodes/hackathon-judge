@@ -46,8 +46,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
     document STRING,
     processing_date TIMESTAMP,
     hackathon_id STRING,
-    score FLOAT64,
-    evaluations ARRAY<STRUCT<id STRING, judge_id STRING, status STRING, criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>, total_score FLOAT64, comment STRING, created_at TIMESTAMP>>
+    score FLOAT64
 );
 
 -- Evaluations Table

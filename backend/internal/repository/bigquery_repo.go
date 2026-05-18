@@ -129,7 +129,6 @@ func (r *BigQueryRepo) GetByID(id string) (domain.Hackathon, error) {
 }
 
 type bqCriteriaScore struct {
-	ID          string  `bigquery:"id"`
 	Name        string  `bigquery:"name"`
 	Description string  `bigquery:"description"`
 	Weight      float64 `bigquery:"weight"`
@@ -158,7 +157,6 @@ type bqProject struct {
 	Date        time.Time            `bigquery:"processing_date"`
 	HackathonID string               `bigquery:"hackathon_id"`
 	Score       float64              `bigquery:"score"`
-	Evaluations []bqNestedEvaluation `bigquery:"evaluations"`
 }
 
 func (r *BigQueryRepo) mapBQProject(bqP bqProject) domain.Project {
@@ -291,7 +289,6 @@ type bqEvaluationRow struct {
 }
 
 type bqProjectEvaluations struct {
-	Evaluations []bqNestedEvaluation `bigquery:"evaluations"`
 }
 
 func (r *BigQueryRepo) Save(eval domain.Evaluation) error {
