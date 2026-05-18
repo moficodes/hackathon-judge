@@ -9,9 +9,11 @@ spec:
       labels:
         sandbox: gemini-sandbox
     spec:
+      serviceAccountName: hackathon-judge-sandbox-sa
+      runtimeClassName: gvisor
       containers:
         - name: gemini-sandbox
-          image: "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/backend:$COMMIT_SHA"
+          image: "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:$COMMIT_SHA"
           securityContext:
             allowPrivilegeEscalation: false
           ports:
@@ -20,3 +22,12 @@ spec:
             limits:
               memory: "4Gi"
               cpu: "2000m"
+          env:
+          - name: GOOGLE_CLOUD_PROJECT
+            value: $GOOGLE_CLOUD_PROJECT
+          - name: GOOGLE_CLOUD_LOCATION
+            value: "global"
+          - name: GOOGLE_GENAI_USE_VERTEXAI
+            value: "true"
+          - name: SANDBOX_DIR
+            value: "/home/sandbox/app"

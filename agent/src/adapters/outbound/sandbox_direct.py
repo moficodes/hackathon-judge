@@ -119,6 +119,10 @@ Scoring Criteria:
             # Write criteria to markdown file
             sandbox.files.write("criteria.md", judging_criteria)
             # Invoke gemini CLI
+
+            print("####")
+            print(judging_criteria)
+            print("####")
             prompt = (
 """
 Identity & Objective:
@@ -159,39 +163,13 @@ The JSON must strictly adhere to this schema:
             )
             safe_prompt = shlex.quote(prompt)
             
-            # Temporary mock for isolation
-            mock_json = """
-{
-  "scores": [
-    {
-      "name": "Documentation",
-      "score": 8.5,
-      "reasoning": "The README is thorough and includes setup instructions, but lacks a troubleshooting section."
-    },
-    {
-      "name": "Innovation",
-      "score": 9.0,
-      "reasoning": "Uses a novel approach to solve the problem using edge computing."
-    },
-    {
-      "name": "Design",
-      "score": 7.5,
-      "reasoning": "Functional UI, but could use better accessibility features."
-    },
-    {
-      "name": "Impact",
-      "score": 9.5,
-      "reasoning": "High potential for scalability and real-world application."
-    }
-  ],
-  "total_score": 8.625,
-  "overall_comments": "Overall a very strong project with clear documentation and high innovation.",
-  "confidence_score": 0.95
-}
-"""
-            sandbox.files.write('evaluation.json', mock_json)
-            # response = sandbox.commands.run(f"gemini --yolo {safe_prompt}")
+            # sandbox.files.write('evaluation.json', mock_json)
+            sandbox.files.write('prompt.md', safe_prompt)
+            prompt = 'gemini --yolo -p "Use @criteria.md as a guide and follow @prompt.md for the prompt. Make sure the output is in JSON format and written to evaluation.json"'
+            response = sandbox.commands.run(prompt, timeout=600)
             # Read the JSON evaluation
+            print(response.stdout)
+            print(response.stderr)
             result_json = sandbox.files.read("evaluation.json")
             print(result_json)
             return result_json
@@ -199,4 +177,5 @@ The JSON must strictly adhere to this schema:
             logger.error(f"Sandbox evaluation failed: {str(e)}")
             return json.dumps({"error": f"Sandbox evaluation failed: {str(e)}"})
         finally:
-            sandbox.terminate()
+            print("exiting...")
+            # sandbox.terminate()

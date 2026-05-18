@@ -28,12 +28,21 @@ spec:
           value: "true"
         - name: SANDBOX_DIR
           value: "/home/sandbox/app"
+        resources:
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
         livenessProbe:
           httpGet:
             path: /
             port: 8888
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 30
         readinessProbe:
           httpGet:
             path: /

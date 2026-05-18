@@ -17,6 +17,7 @@ import os
 import shlex
 import logging
 import urllib.parse
+import asyncio
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
@@ -76,8 +77,9 @@ async def execute_command(request: ExecuteRequest):
         # Split the command string into a list to safely pass to subprocess
         args = shlex.split(request.command)
         
-        # Execute the command from the configured sandbox directory
-        process = subprocess.run(
+        # Execute the command from the configured sandbox directory using to_thread to avoid blocking
+        process = await asyncio.to_thread(
+            subprocess.run,
             args,
             capture_output=True,
             text=True,
@@ -105,8 +107,12 @@ async def upload_file(file: UploadFile = File(...)):
         logger.info("Attempting to save '%s'", file.filename)
         file_path = os.path.join(SANDBOX_DIR, file.filename)
 
-        with open(file_path, "wb") as f:
-            f.write(await file.read())
+        content = await file.read()
+        def write_file():
+            with open(file_path, "wb") as f:
+                f.write(content)
+        
+        await asyncio.to_thread(write_file)
 
         return JSONResponse(
             status_code=200,
@@ -151,10 +157,9 @@ async def list_files(encoded_file_path: str):
     except ValueError:
         return JSONResponse(status_code=403, content={"message": "Access denied"})
 
-    if not os.path.isdir(full_path):
-        return JSONResponse(status_code=404, content={"message": "Path is not a directory"})
-
-    try:
+    def get_entries():
+        if not os.path.isdir(full_path):
+            return None
         entries = []
         with os.scandir(full_path) as it:
             for entry in it:
@@ -165,9 +170,16 @@ async def list_files(encoded_file_path: str):
                     "type": "directory" if entry.is_dir() else "file",
                     "mod_time": stats.st_mtime
                 })
+        return entries
+
+    try:
+        entries = await asyncio.to_thread(get_entries)
+        if entries is None:
+            return JSONResponse(status_code=404, content={"message": "Path is not a directory"})
         return JSONResponse(status_code=200, content=entries)
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"List files failed: {str(e)}"})
+
 
 @app.get("/exists/{encoded_file_path:path}", summary="Check if the relative path exists")
 async def exists(encoded_file_path: str):
