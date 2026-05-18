@@ -119,10 +119,6 @@ Scoring Criteria:
             # Write criteria to markdown file
             sandbox.files.write("criteria.md", judging_criteria)
             # Invoke gemini CLI
-
-            print("####")
-            print(judging_criteria)
-            print("####")
             prompt = (
 """
 Identity & Objective:
@@ -178,4 +174,4 @@ The JSON must strictly adhere to this schema:
             return json.dumps({"error": f"Sandbox evaluation failed: {str(e)}"})
         finally:
             print("exiting...")
-            # sandbox.terminate()
+            sandbox.terminate()
