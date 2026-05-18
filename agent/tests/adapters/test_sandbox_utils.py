@@ -1,4 +1,5 @@
 import os
+import pytest
 from unittest.mock import patch, MagicMock
 from src.adapters.outbound.sandbox_utils import get_sandbox_client
 from k8s_agent_sandbox.models import (
@@ -24,13 +25,20 @@ def test_get_sandbox_client_gateway():
 def test_get_sandbox_client_router_dns():
     with patch.dict(os.environ, {
         "SANDBOX_CONNECTION_METHOD": "router_dns",
-        "SANDBOX_ROUTER_URL": "http://router.svc"
+        "SANDBOX_NAMESPACE": "my-cool-namespace"
     }):
         with patch("src.adapters.outbound.sandbox_utils.SandboxClient") as mock_client:
             get_sandbox_client()
             config = mock_client.call_args[1]["connection_config"]
             assert isinstance(config, SandboxDirectConnectionConfig)
-            assert config.api_url == "http://router.svc"
+            assert config.api_url == "http://sandbox-router-svc.my-cool-namespace.svc.cluster.local:8080"
+
+def test_get_sandbox_client_router_dns_missing_namespace():
+    with patch.dict(os.environ, {
+        "SANDBOX_CONNECTION_METHOD": "router_dns"
+    }, clear=True):
+        with pytest.raises(ValueError, match="SANDBOX_NAMESPACE is required for router_dns connection method"):
+            get_sandbox_client()
 
 def test_get_sandbox_client_in_cluster_dns():
     with patch.dict(os.environ, {
