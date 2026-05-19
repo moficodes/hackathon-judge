@@ -35,7 +35,7 @@ async def test_sandbox_direct_adapter_success(sample_request):
     }
     """
     
-    with patch.object(adapter, '_evaluate_repository', return_value=mock_result_json) as mock_eval:
+    with patch('src.adapters.outbound.sandbox_direct.evaluate_repository', return_value=mock_result_json) as mock_eval:
         response = await adapter.process_message(sample_request)
         
         # Verify the mock was called correctly
@@ -63,7 +63,7 @@ async def test_sandbox_direct_adapter_sandbox_error(sample_request):
     {"error": "Sandbox evaluation failed: Could not clone repo"}
     """
     
-    with patch.object(adapter, '_evaluate_repository', return_value=mock_result_json):
+    with patch('src.adapters.outbound.sandbox_direct.evaluate_repository', return_value=mock_result_json):
         response = await adapter.process_message(sample_request)
         
         assert response.status == "error"
@@ -76,7 +76,7 @@ async def test_sandbox_direct_adapter_invalid_json(sample_request):
     # Mock invalid JSON
     mock_result_json = "This is not json"
     
-    with patch.object(adapter, '_evaluate_repository', return_value=mock_result_json):
+    with patch('src.adapters.outbound.sandbox_direct.evaluate_repository', return_value=mock_result_json):
         response = await adapter.process_message(sample_request)
         
         assert response.status == "error"

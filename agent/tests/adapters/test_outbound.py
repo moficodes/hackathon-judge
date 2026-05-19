@@ -29,7 +29,7 @@ async def test_adk_agent_adapter(mock_runner_cls):
     original_get_session = agent.session_service.get_session
     async def fake_get_session(*args, **kwargs):
         session = await original_get_session(*args, **kwargs)
-        from src.adapters.outbound.adk_agent import EvaluationOutput, EvaluationScore
+        from src.core.models.evaluation import EvaluationOutput, EvaluationScore
         session.state["evaluation_result"] = EvaluationOutput(
             scores=[EvaluationScore(name="Innovation", score=8.5, reasoning="Very innovative")],
             total_score=8.5,
@@ -58,11 +58,11 @@ async def test_adk_agent_adapter(mock_runner_cls):
 
 def test_evaluate_repository_tool_registration():
     adapter = ADKAgentAdapter()
-    from src.adapters.outbound.adk_agent import evaluate_repository
+    from src.adapters.outbound.shared_sandbox import evaluate_repository
     assert evaluate_repository in adapter.agent.tools
 
 @pytest.mark.asyncio
-@patch('src.adapters.outbound.adk_agent.get_sandbox_client')
+@patch('src.adapters.outbound.shared_sandbox.get_sandbox_client')
 async def test_evaluate_repository_execution(mock_get_sandbox_client):
     # Setup mock client
     mock_client = MagicMock()
@@ -79,13 +79,13 @@ async def test_evaluate_repository_execution(mock_get_sandbox_client):
     mock_sandbox.terminate = MagicMock(return_value=None)
 
     with patch.dict('os.environ', {'SANDBOX_TEMPLATE': 'test-template', 'SANDBOX_NAMESPACE': 'test-ns'}):
-        from src.adapters.outbound.adk_agent import evaluate_repository
+        from src.adapters.outbound.shared_sandbox import evaluate_repository
         result = evaluate_repository("https://github.com/test/repo", "# Criteria")
 
     assert "total_score" in result
     mock_client.create_sandbox.assert_called_once_with(template="test-template", namespace="test-ns")
     mock_sandbox.commands.run.assert_any_call("git clone https://github.com/test/repo repo")
-    mock_sandbox.files.write.assert_called_once_with("criteria.md", "# Criteria")
+    mock_sandbox.files.write.assert_any_call("criteria.md", "# Criteria")
     mock_sandbox.files.read.assert_called_once_with("evaluation.json")
     mock_sandbox.terminate.assert_called_once()
 
