@@ -46,7 +46,7 @@ function ProjectCard({ project }: { project: Project }) {
     <div className="border border-slate-200 rounded-lg p-4 bg-white hover:border-blue-600 transition-colors">
       <h3 className="text-xl font-semibold mb-2">{project.title}</h3>
       <p className="text-gray-600 mb-1">Team: {project.team_name}</p>
-      <p className="text-gray-600 mb-4 font-medium text-lg">Score: {project.score}</p>
+      <p className="text-gray-600 mb-4 font-medium text-lg">Score: {typeof project.score === 'number' ? project.score.toFixed(2) : 'N/A'}</p>
       
       <div className="flex flex-col gap-2">
         <div className="flex gap-2">
