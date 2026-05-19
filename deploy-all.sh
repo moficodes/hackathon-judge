@@ -813,6 +813,27 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Applying Sandbox Claim Template..."
   envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
 
+  log_info "Applying Sandbox WarmPool..."
+  kubectl apply -f k8s/sandbox-warmpool.yaml
+
+  log_info "Waiting for Sandbox WarmPool pods to be ready..."
+  # Wait for the warmpool pods to be created and running. The warmpool creates 5 replicas.
+  # We will wait for at least one to be running, or all of them depending on preference.
+  # Since it's a warmpool, we should probably wait for all of them to avoid immediate cold starts.
+  for i in {1..60}; do
+    READY_PODS=$(kubectl get pods -n hackathon-judge -l app=sandbox --field-selector status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+    if [ "$READY_PODS" -ge 5 ]; then
+      log_success "Sandbox WarmPool pods are ready ($READY_PODS/5)!"
+      break
+    fi
+    log_info "  Still waiting for Sandbox WarmPool pods to be ready ($READY_PODS/5)... (attempt $i/60)"
+    sleep 5
+  done
+  
+  if [ "$READY_PODS" -lt 5 ]; then
+    log_warning "Sandbox WarmPool pods did not fully reach ready state within 5 minutes ($READY_PODS/5 ready)."
+  fi
+
   log_info "Applying Backend..."
   envsubst < k8s/backend.yaml | kubectl apply -f -
 
