@@ -78,7 +78,7 @@ export default function ProjectDetail() {
                 </div>
                 <div className="text-right">
                   <span className="text-xs text-gray-500 uppercase tracking-wider font-bold">Total Score</span>
-                  <p className="text-3xl font-black text-blue-600 mt-1">{e.total_score}</p>
+                  <p className="text-3xl font-black text-blue-600 mt-1">{typeof e.total_score === 'number' ? e.total_score.toFixed(2) : 'N/A'}</p>
                 </div>
               </div>
               
@@ -98,7 +98,7 @@ export default function ProjectDetail() {
                             <div className="flex items-center gap-4">
                               <div className="text-right">
                                 <span className="text-[10px] text-gray-400 uppercase font-bold block leading-none mb-1">Score</span>
-                                <span className="font-black text-blue-600 text-lg">{c.score}</span>
+                                <span className="font-black text-blue-600 text-lg">{typeof c.score === 'number' ? c.score.toFixed(2) : 'N/A'}</span>
                               </div>
                               <div className="text-right border-l border-gray-200 pl-4">
                                 <span className="text-[10px] text-gray-400 uppercase font-bold block leading-none mb-1">Max</span>

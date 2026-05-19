@@ -79,10 +79,11 @@ describe('ProjectDetail Component', () => {
       expect(screen.getByText('Score')).toBeInTheDocument();
       expect(screen.getByText('Max')).toBeInTheDocument();
       expect(screen.getByText('Weight')).toBeInTheDocument();
-      expect(screen.getByText('9')).toBeInTheDocument();
+      expect(screen.getByText('9.00')).toBeInTheDocument();
       expect(screen.getByText('10')).toBeInTheDocument();
       expect(screen.getByText('1.5')).toBeInTheDocument();
       expect(screen.getByText(/"Impressive use of tech"/)).toBeInTheDocument();
+      expect(screen.getByText('85.00')).toBeInTheDocument();
     });
   });
 });
