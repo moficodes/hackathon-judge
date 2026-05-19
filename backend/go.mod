@@ -3,7 +3,6 @@ module github.com/moficodes/hackathon-judge/backend
 go 1.25.3
 
 require (
-	cloud.google.com/go v0.123.0
 	cloud.google.com/go/bigquery v1.77.0
 	cloud.google.com/go/pubsub v1.50.2
 	github.com/gin-gonic/gin v1.12.0
@@ -14,6 +13,7 @@ require (
 )
 
 require (
+	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
