@@ -1,0 +1,12 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxWarmPool
+metadata:
+  name: hackathon-sandboxwarmpool
+  namespace: hackathon-judge
+spec:
+  updateStrategy:
+    type: Recreate
+  replicas: 5
+  sandboxTemplateRef:
+    # This name must exactly match the 'metadata.name' of your SandboxTemplate.
+    name: sandbox-hackathon-judge-template
