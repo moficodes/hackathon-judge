@@ -28,9 +28,6 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    timeouts:
-      request: 600s
-      backendRequest: 600s
     backendRefs:
     - name: sandbox-router-svc
       port: 8080
@@ -52,3 +49,16 @@ spec:
       type: HTTP
       httpHealthCheck:
         requestPath: /healthz # Tell the health checker to use this path
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: router-backend-policy
+  namespace: hackathon-judge
+spec:
+  default:
+    timeoutSec: 600 # 10 minutes (change to whatever max execution time they need)
+  targetRef:
+    group: ""
+    kind: Service
+    name: sandbox-router-svc
