@@ -813,23 +813,17 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Applying Sandbox Claim Template..."
   envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
 
-  log_info "Applying Backend Service and Deployment..."
-  kubectl apply -f k8s/backend-service.yaml
-  kubectl apply -f k8s/healthcheckpolicy.yaml
-  envsubst < k8s/backend-deployment.yaml | kubectl apply -f -
+  log_info "Applying Backend..."
+  envsubst < k8s/backend.yaml | kubectl apply -f -
 
-  log_info "Applying Agent Deployment..."
-  envsubst < k8s/agent-deployment.yaml | kubectl apply -f -
+  log_info "Applying Agent..."
+  envsubst < k8s/agent.yaml | kubectl apply -f -
 
-  log_info "Applying Frontend Service and Deployment..."
-  kubectl apply -f k8s/frontend-service.yaml
-  envsubst < k8s/frontend-deployment.yaml | kubectl apply -f -
+  log_info "Applying Frontend..."
+  envsubst < k8s/frontend.yaml | kubectl apply -f -
 
-  log_info "Applying Gateway..."
+  log_info "Applying Gateway and Routing..."
   kubectl apply -f k8s/gateway.yaml
-
-  log_info "Applying HTTPRoute..."
-  kubectl apply -f k8s/httproute.yaml
 
   log_info "Waiting for all deployments to be ready..."
   for deploy in backend frontend agent; do

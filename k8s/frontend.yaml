@@ -28,3 +28,20 @@ spec:
           limits:
             cpu: 500m
             memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: hackathon-judge
+  labels:
+    app: frontend
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: frontend
+  type: ClusterIP

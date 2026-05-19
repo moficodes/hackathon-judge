@@ -49,3 +49,20 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: BQ_DATASET
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: hackathon-judge
+  labels:
+    app: backend
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: backend
+  type: ClusterIP
