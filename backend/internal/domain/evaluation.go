@@ -28,6 +28,7 @@ type EvaluationRepository interface {
 	Update(eval Evaluation) error
 	GetByProjectID(projectID string) ([]Evaluation, error)
 	GetEvaluationByID(id string) (Evaluation, error)
+	JudgeProjectWithBQ(projectID string, evaluationID string) ([]CriteriaScore, error)
 }
 
 type JudgingTask struct {
