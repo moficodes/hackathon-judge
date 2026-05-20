@@ -16,7 +16,7 @@ Scored AS (
   SELECT
     id, name, description, weight, max_score,
     AI.SCORE(
-      prompt => (description, OBJ.GET_ACCESS_URL((SELECT readme_ref FROM ProjectInfo), 'r'))
+      prompt => ('Evaluate this project against the following rubric:', description, OBJ.GET_ACCESS_URL((SELECT readme_ref FROM ProjectInfo), 'r'))
     ) as score
   FROM CriteriaToScore
 ),

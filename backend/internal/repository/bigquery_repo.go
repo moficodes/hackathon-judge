@@ -344,7 +344,7 @@ func (r *BigQueryRepo) Update(eval domain.Evaluation) error {
 	}
 
 	query := r.client.Query(fmt.Sprintf(`
-		UPDATE %s.%s.evaluations 
+		UPDATE `+"`"+`%s.%s.evaluations`+"`"+` 
 		SET status = @status, 
 		    total_score = @total_score, 
 		    comment = @comment, 
@@ -468,4 +468,67 @@ func (r *BigQueryRepo) GetByProjectID(projectID string) ([]domain.Evaluation, er
 	}
 
 	return evaluations, nil
+}
+
+func (r *BigQueryRepo) JudgeProjectWithBQ(projectID string, evaluationID string) ([]domain.CriteriaScore, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	queryStr := fmt.Sprintf(`
+		WITH ProjectInfo AS (
+		  SELECT p.id, p.readme_ref, p.hackathon_id
+		  FROM `+"`"+`%s.%s.projects`+"`"+` p
+		  WHERE p.id = @project_id
+		),
+		CriteriaToScore AS (
+		  SELECT c.id, c.name, c.description, c.max_score, c.weight
+		  FROM `+"`"+`%s.%s.hackathons`+"`"+` h, UNNEST(h.criteria) c
+		  JOIN ProjectInfo pi ON h.id = pi.hackathon_id
+		),
+		Scored AS (
+		  SELECT
+		    name, description, weight, max_score,
+		    AI.SCORE(
+		      prompt => ('Evaluate this project against the following rubric:', description, OBJ.GET_ACCESS_URL((SELECT readme_ref FROM ProjectInfo), 'r'))
+		    ) as score
+		  FROM CriteriaToScore
+		)
+		SELECT name, score, description as reasoning, max_score, weight FROM Scored;
+	`, r.projectID, r.datasetID, r.projectID, r.datasetID)
+
+	query := r.client.Query(queryStr)
+	query.Parameters = []bigquery.QueryParameter{
+		{Name: "project_id", Value: projectID},
+	}
+
+	it, err := query.Read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute BQ AI scoring: %w", err)
+	}
+
+	var scores []domain.CriteriaScore
+	for {
+		var row struct {
+			Name      string  `bigquery:"name"`
+			Score     float64 `bigquery:"score"`
+			Reasoning string  `bigquery:"reasoning"`
+			MaxScore  float64 `bigquery:"max_score"`
+			Weight    float64 `bigquery:"weight"`
+		}
+		err := it.Next(&row)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse BQ scoring row: %w", err)
+		}
+		scores = append(scores, domain.CriteriaScore{
+			Name:      row.Name,
+			Score:     row.Score,
+			Reasoning: row.Reasoning,
+			MaxScore:  row.MaxScore,
+			Weight:    row.Weight,
+		})
+	}
+	return scores, nil
 }
