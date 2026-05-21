@@ -138,11 +138,25 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 
 	taskID := "tsk_" + uuid.New().String()
 
+	judgeID := "system-agent"
+	isBQ := false
+
+	type bqScorer interface {
+		JudgeProjectWithBQ(projectID string, evaluationID string) ([]domain.CriteriaScore, error)
+	}
+
+	var bqRepo bqScorer
+	if r, ok := s.evalRepo.(bqScorer); ok {
+		bqRepo = r
+		judgeID = "BQ_JUDGE"
+		isBQ = true
+	}
+
 	// Save RUNNING evaluation
 	eval := domain.Evaluation{
 		ID:        taskID,
 		ProjectID: projectID,
-		JudgeID:   "system-agent",
+		JudgeID:   judgeID,
 		Status:    "RUNNING",
 		CreatedAt: time.Now(),
 	}
@@ -150,6 +164,62 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 		return "", fmt.Errorf("failed to save running evaluation: %w", err)
 	}
 
+	if isBQ {
+		go func() {
+			scores, err := bqRepo.JudgeProjectWithBQ(projectID, taskID)
+
+			eval, getErr := s.evalRepo.GetEvaluationByID(taskID)
+			if getErr != nil {
+				fmt.Printf("Error: failed to fetch active evaluation task %s: %v\n", taskID, getErr)
+				return
+			}
+
+			if err != nil {
+				eval.Status = "FAILED"
+				eval.Comment = fmt.Sprintf("BigQuery AI scoring failed: %v", err)
+			} else {
+				eval.Status = "SUCCESS"
+				eval.Criteria = scores
+
+				// Calculate average score based on criteria weights
+				var evalTotal float64
+				for _, cs := range scores {
+					evalTotal += cs.Score * cs.Weight
+				}
+				eval.TotalScore = evalTotal
+				eval.Comment = "Automated BigQuery AI evaluation completed successfully"
+			}
+
+			if updateErr := s.evalRepo.Update(eval); updateErr != nil {
+				fmt.Printf("Error: failed to update evaluation %s: %v\n", taskID, updateErr)
+				return
+			}
+
+			if eval.Status == "SUCCESS" {
+				// Recalculate average project score
+				evals, err := s.evalRepo.GetByProjectID(projectID)
+				if err == nil {
+					var total float64
+					var count int
+					for _, e := range evals {
+						if e.Status == "SUCCESS" {
+							total += e.TotalScore
+							count++
+						}
+					}
+					if count > 0 {
+						average := total / float64(count)
+						s.projectRepo.UpdateScore(projectID, average)
+					}
+				}
+			}
+		}()
+
+		return taskID, nil
+	}
+
+	// Fallback to Pub/Sub tasks publishing (commented out just in case, but kept)
+	/*
 	task := domain.JudgingTask{
 		TaskID:          taskID,
 		ProjectName:     project.Name,
@@ -167,6 +237,7 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 		// Mock handling when publisher is nil (e.g. for simple tests)
 		fmt.Printf("Mock published task %s for project %s\n", taskID, project.Name)
 	}
+	*/
 
 	return taskID, nil
 }
