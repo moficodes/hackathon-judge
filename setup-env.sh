@@ -53,6 +53,32 @@ else
   return 1
 fi
 
+# 1.5 Verify all required variables are present
+REQUIRED_VARS=(
+  "GOOGLE_CLOUD_PROJECT"
+  "GOOGLE_CLOUD_REGION"
+  "ARTIFACT_REGISTRY_LOCATION"
+  "ARTIFACT_REPO_NAME"
+  "BQ_DATASET"
+  "RESULTS_SUB"
+  "RESULTS_TOPIC"
+  "TASKS_SUBSCRIPTION"
+  "TASKS_TOPIC"
+)
+
+MISSING_VARS=false
+for var in "${REQUIRED_VARS[@]}"; do
+  if [ -z "${!var:-}" ]; then
+    echo -e "${RED}❌ ERROR: Required variable '$var' is not set or is empty.${NC}"
+    MISSING_VARS=true
+  fi
+done
+
+if [ "$MISSING_VARS" = "true" ]; then
+  echo -e "${YELLOW}⚠️  Please update your .env file with the missing variables and try again.${NC}"
+  return 1
+fi
+
 # 2. Determine and export COMMIT_SHA
 echo -e "${BLUE}ℹ${NC} Determining COMMIT_SHA for Docker image tags..."
 
