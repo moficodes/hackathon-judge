@@ -57,7 +57,9 @@ describe('HackathonDetail Component', () => {
     await waitFor(() => {
       expect(screen.getByText('AI Builder')).toBeInTheDocument();
       expect(screen.getByText('Team: Team Alpha')).toBeInTheDocument();
-      expect(screen.getByText('Score: 95.50')).toBeInTheDocument();
+      // Use regex to match the text across elements
+      expect(screen.getByText(/Score:/)).toBeInTheDocument();
+      expect(screen.getByText('95.50')).toBeInTheDocument();
     });
   });
 });
