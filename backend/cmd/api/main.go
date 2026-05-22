@@ -95,7 +95,13 @@ func main() {
 				} else {
 					eval.Status = "SUCCESS"
 					eval.Criteria = res.Scores
-					eval.TotalScore = res.TotalScore
+					
+					var calculatedTotal float64
+					for _, score := range res.Scores {
+						calculatedTotal += score.Score * score.Weight
+					}
+					eval.TotalScore = calculatedTotal
+					
 					eval.Comment = res.OverallComments
 				}
 
