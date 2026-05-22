@@ -24,7 +24,8 @@ func (h *HackathonHandler) RegisterRoutes(r *gin.Engine) {
 		api.GET("/hackathons/:id/projects", h.GetProjects)
 		api.GET("/projects/:id", h.GetProject)
 		api.GET("/projects/:id/evaluations", h.GetEvaluations)
-		api.POST("/projects/:id/judge", h.TriggerJudging)
+		api.POST("/projects/:id/judge", h.TriggerJudgingAgent)
+		api.POST("/projects/:id/judge/bq", h.TriggerJudgingBQ)
 	}
 }
 
@@ -88,16 +89,30 @@ func (h *HackathonHandler) GetEvaluations(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
-func (h *HackathonHandler) TriggerJudging(c *gin.Context) {
+func (h *HackathonHandler) TriggerJudgingAgent(c *gin.Context) {
 	id := c.Param("id")
-	taskID, err := h.svc.TriggerJudging(id)
+	taskID, err := h.svc.TriggerJudgingAgent(id)
 	if err != nil {
-		log.Printf("[ERROR] TriggerJudging failed for project %s: %v\n", id, err)
+		log.Printf("[ERROR] TriggerJudgingAgent failed for project %s: %v\n", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{
-		"message": "Judging task created",
+		"message": "Agent judging task created",
+		"task_id": taskID,
+	})
+}
+
+func (h *HackathonHandler) TriggerJudgingBQ(c *gin.Context) {
+	id := c.Param("id")
+	taskID, err := h.svc.TriggerJudging(id, true)
+	if err != nil {
+		log.Printf("[ERROR] TriggerJudgingBQ failed for project %s: %v\n", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "BQ AI judging task created",
 		"task_id": taskID,
 	})
 }

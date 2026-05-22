@@ -6,11 +6,15 @@ import type { Project, Evaluation, Hackathon } from '../types/models';
 
 function ProjectCard({ project }: { project: Project }) {
   const { data: evaluations, mutate } = useSWR<Evaluation[]>(`/api/projects/${project.id}/evaluations`, fetcher);
-  const [isTriggering, setIsTriggering] = useState(false);
+  const [isTriggeringAgent, setIsTriggeringAgent] = useState(false);
+  const [isTriggeringBQ, setIsTriggeringBQ] = useState(false);
   const [judgeMessage, setJudgeMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
 
-  const isRunning = evaluations?.some(e => e.status === 'RUNNING');
-  const hasEvaluations = evaluations && evaluations.length > 0;
+  const isAgentRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'sandbox');
+  const isBQRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'BQ AI Function');
+  const hasAgentEvaluations = evaluations?.some(e => e.judge_id === 'sandbox');
+  const hasBQEvaluations = evaluations?.some(e => e.judge_id === 'BQ AI Function');
+  const isRunning = isAgentRunning || isBQRunning;
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -22,53 +26,83 @@ function ProjectCard({ project }: { project: Project }) {
     return () => clearInterval(interval);
   }, [isRunning, mutate]);
 
-  const handleJudge = async () => {
-    if (hasEvaluations && !window.confirm('Evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
+  const handleJudgeAgent = async () => {
+    if (hasAgentEvaluations && !window.confirm('Agent evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
       return;
     }
 
-    setIsTriggering(true);
+    setIsTriggeringAgent(true);
     setJudgeMessage(null);
     try {
       const response = await fetch(`/api/projects/${project.id}/judge`, { method: 'POST' });
       if (!response.ok) throw new Error('Failed to start judging');
-      setJudgeMessage({ text: 'Judging task started!', type: 'success' });
+      setJudgeMessage({ text: 'Agent judging task started!', type: 'success' });
       setTimeout(() => mutate(), 1000);
     } catch {
       setJudgeMessage({ text: 'Error starting judging', type: 'error' });
     } finally {
-      setIsTriggering(false);
+      setIsTriggeringAgent(false);
+      setTimeout(() => setJudgeMessage(null), 3000);
+    }
+  };
+
+  const handleJudgeBQ = async () => {
+    if (hasBQEvaluations && !window.confirm('BQ evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
+      return;
+    }
+
+    setIsTriggeringBQ(true);
+    setJudgeMessage(null);
+    try {
+      const response = await fetch(`/api/projects/${project.id}/judge/bq`, { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to start judging');
+      setJudgeMessage({ text: 'BQ AI judging task started!', type: 'success' });
+      setTimeout(() => mutate(), 1000);
+    } catch {
+      setJudgeMessage({ text: 'Error starting judging', type: 'error' });
+    } finally {
+      setIsTriggeringBQ(false);
       setTimeout(() => setJudgeMessage(null), 3000);
     }
   };
 
   return (
-    <div className="border border-slate-200 rounded-lg p-4 bg-white hover:border-blue-600 transition-colors">
+    <div className="border border-slate-200 rounded-lg p-4 bg-white hover:border-blue-600 transition-colors shadow-sm">
       <h3 className="text-xl font-semibold mb-2">{project.title}</h3>
       <p className="text-gray-600 mb-1">Team: {project.team_name}</p>
-      <p className="text-gray-600 mb-4 font-medium text-lg">Score: {typeof project.score === 'number' ? project.score.toFixed(2) : 'N/A'}</p>
+      <p className="text-gray-600 mb-4 font-medium text-lg">Score: <span className="text-blue-600 font-bold">{typeof project.score === 'number' ? project.score.toFixed(2) : 'N/A'}</span></p>
       
       <div className="flex flex-col gap-2">
         <div className="flex gap-2">
           <Link 
             to={`/projects/${project.id}`}
-            className="inline-block border border-blue-600 text-blue-600 px-4 py-2 rounded hover:bg-blue-50 transition-colors"
+            className="flex-1 text-center border border-blue-600 text-blue-600 px-3 py-2 rounded hover:bg-blue-50 transition-colors font-medium text-sm"
           >
-            View Evaluations
+            View
           </Link>
           <button
-            onClick={handleJudge}
-            disabled={isTriggering || isRunning}
-            className={`inline-block border px-4 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-              isRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
+            onClick={handleJudgeAgent}
+            disabled={isTriggeringAgent || isAgentRunning}
+            className={`flex-1 border px-3 py-2 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm ${
+              isAgentRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
+              'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {isTriggeringAgent ? '...' : isAgentRunning ? 'Running...' : hasAgentEvaluations ? 'Rerun Agent' : 'Run Agent'}
+          </button>
+          <button
+            onClick={handleJudgeBQ}
+            disabled={isTriggeringBQ || isBQRunning}
+            className={`flex-1 border px-3 py-2 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm ${
+              isBQRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
               'border-green-600 bg-green-600 text-white hover:bg-green-700'
             }`}
           >
-            {isTriggering ? 'Starting...' : isRunning ? 'Judging in progress...' : hasEvaluations ? 'Rerun Judge' : 'Judge Project'}
+            {isTriggeringBQ ? '...' : isBQRunning ? 'Running...' : hasBQEvaluations ? 'Rerun BQ' : 'Run BQ'}
           </button>
         </div>
         {judgeMessage && (
-          <p className={`text-sm mt-1 ${judgeMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+          <p className={`text-xs mt-1 ${judgeMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
             {judgeMessage.text}
           </p>
         )}
@@ -80,13 +114,32 @@ function ProjectCard({ project }: { project: Project }) {
 export default function HackathonDetail() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<'projects' | 'criteria'>('projects');
+  const [isBulkJudging, setIsBulkJudging] = useState(false);
   
   const { data: hackathon, error: hackathonError, isLoading: isHackathonLoading } = useSWR<Hackathon>(id ? `/api/hackathons/${id}` : null, fetcher);
-  const { data: projects, error: projectsError, isLoading: isProjectsLoading } = useSWR<Project[]>(id ? `/api/hackathons/${id}/projects` : null, fetcher);
+  const { data: projects, error: projectsError, isLoading: isProjectsLoading, mutate: mutateProjects } = useSWR<Project[]>(id ? `/api/hackathons/${id}/projects` : null, fetcher);
 
   if (isHackathonLoading || isProjectsLoading) return <div className="p-4">Loading details...</div>;
   if (hackathonError) return <div className="p-4 text-red-500">Failed to load hackathon details.</div>;
   if (projectsError) return <div className="p-4 text-red-500">Failed to load projects.</div>;
+
+  const handleJudgeAll = async () => {
+    if (!projects || projects.length === 0) return;
+    if (!window.confirm(`Are you sure you want to run BQ AI Judging for all ${projects.length} projects?`)) {
+      return;
+    }
+
+    setIsBulkJudging(true);
+    try {
+      await Promise.all(projects.map(p => fetch(`/api/projects/${p.id}/judge/bq`, { method: 'POST' })));
+      alert('Started judging for all projects!');
+      setTimeout(() => mutateProjects(), 1000);
+    } catch {
+      alert('Error starting batch judging');
+    } finally {
+      setIsBulkJudging(false);
+    }
+  };
   
   return (
     <div className="p-4">
@@ -94,8 +147,19 @@ export default function HackathonDetail() {
         <Link to="/dashboard" className="text-blue-600 hover:underline mb-4 inline-block">&larr; Back to Dashboard</Link>
         {hackathon && (
           <div className="bg-white p-6 rounded-lg border border-slate-200 mb-6 shadow-sm">
-            <h2 className="text-3xl font-bold mb-2">{hackathon.title}</h2>
-            <p className="text-gray-500 mb-4">{new Date(hackathon.date).toLocaleDateString()} &middot; Status: <span className="font-medium text-slate-700">{hackathon.status}</span></p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-3xl font-bold mb-2">{hackathon.title}</h2>
+                <p className="text-gray-500 mb-4">{new Date(hackathon.date).toLocaleDateString()} &middot; Status: <span className="font-medium text-slate-700 uppercase text-sm tracking-wide">{hackathon.status}</span></p>
+              </div>
+              <button
+                onClick={handleJudgeAll}
+                disabled={isBulkJudging || !projects || projects.length === 0}
+                className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isBulkJudging ? 'Starting Batch...' : 'Judge All Projects (BQ AI)'}
+              </button>
+            </div>
             <div className="prose max-w-none text-gray-700">
               <p className="font-semibold text-lg mb-2">Goal:</p>
               <p>{hackathon.goal}</p>
