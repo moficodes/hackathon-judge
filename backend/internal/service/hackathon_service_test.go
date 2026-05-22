@@ -81,7 +81,7 @@ func TestTriggerJudgingDirectBQ(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewHackathonService(repo, repo, repo, nil)
 
-	taskID, err := svc.TriggerJudging("p1")
+	taskID, err := svc.TriggerJudging("p1", true)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, taskID)
 
@@ -97,7 +97,7 @@ func TestTriggerJudgingDirectBQ(t *testing.T) {
 	eval, err = repo.GetEvaluationByID(taskID)
 	assert.NoError(t, err)
 	assert.Equal(t, "SUCCESS", eval.Status)
-	assert.Equal(t, "BQ_JUDGE", eval.JudgeID)
+	assert.Equal(t, "BQ AI Function", eval.JudgeID)
 	assert.NotEmpty(t, eval.Criteria)
 
 	// Sum of weights:

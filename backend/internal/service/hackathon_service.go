@@ -15,7 +15,8 @@ type HackathonService interface {
 	GetProject(id string) (domain.Project, error)
 	AddEvaluation(eval domain.Evaluation) error
 	ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error)
-	TriggerJudging(projectID string) (string, error)
+	TriggerJudging(projectID string, useBQ bool) (string, error)
+	TriggerJudgingAgent(projectID string) (string, error)
 }
 
 type hackathonService struct {
@@ -118,7 +119,7 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 	return s.projectRepo.UpdateScore(eval.ProjectID, average)
 }
 
-func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
+func (s *hackathonService) TriggerJudging(projectID string, useBQ bool) (string, error) {
 	// Fetch project
 	project, err := s.projectRepo.GetProjectByID(projectID)
 	if err != nil {
@@ -138,7 +139,7 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 
 	taskID := "tsk_" + uuid.New().String()
 
-	judgeID := "system-agent"
+	judgeID := "sandbox"
 	isBQ := false
 
 	type bqScorer interface {
@@ -146,10 +147,12 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 	}
 
 	var bqRepo bqScorer
-	if r, ok := s.evalRepo.(bqScorer); ok {
-		bqRepo = r
-		judgeID = "BQ_JUDGE"
-		isBQ = true
+	if useBQ {
+		if r, ok := s.evalRepo.(bqScorer); ok {
+			bqRepo = r
+			judgeID = "BQ AI Function"
+			isBQ = true
+		}
 	}
 
 	// Save RUNNING evaluation
@@ -218,8 +221,7 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 		return taskID, nil
 	}
 
-	// Fallback to Pub/Sub tasks publishing (commented out just in case, but kept)
-	/*
+	// Pub/Sub tasks publishing
 	task := domain.JudgingTask{
 		TaskID:          taskID,
 		ProjectName:     project.Name,
@@ -237,7 +239,10 @@ func (s *hackathonService) TriggerJudging(projectID string) (string, error) {
 		// Mock handling when publisher is nil (e.g. for simple tests)
 		fmt.Printf("Mock published task %s for project %s\n", taskID, project.Name)
 	}
-	*/
 
 	return taskID, nil
+}
+
+func (s *hackathonService) TriggerJudgingAgent(projectID string) (string, error) {
+	return s.TriggerJudging(projectID, false)
 }

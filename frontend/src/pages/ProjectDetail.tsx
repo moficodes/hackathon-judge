@@ -1,4 +1,4 @@
-// src/pages/ProjectDetail.tsx
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetcher } from '../utils/fetcher';
@@ -7,8 +7,11 @@ import type { Evaluation, Project, Hackathon } from '../types/models';
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [isTriggeringAgent, setIsTriggeringAgent] = useState(false);
+  const [isTriggeringBQ, setIsTriggeringBQ] = useState(false);
+  const [judgeMessage, setJudgeMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
   
-  const { data: project, error: projectError, isLoading: isProjectLoading } = useSWR<Project>(
+  const { data: project, error: projectError, isLoading: isProjectLoading, mutate: mutateProject } = useSWR<Project>(
     id ? `/api/projects/${id}` : null,
     fetcher
   );
@@ -18,10 +21,67 @@ export default function ProjectDetail() {
     fetcher
   );
 
-  const { data: evaluations, error: evalError, isLoading: isEvalLoading } = useSWR<Evaluation[]>(
+  const { data: evaluations, error: evalError, isLoading: isEvalLoading, mutate: mutateEvaluations } = useSWR<Evaluation[]>(
     id ? `/api/projects/${id}/evaluations` : null, 
     fetcher
   );
+
+  const isAgentRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'sandbox');
+  const isBQRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'BQ AI Function');
+  const hasAgentEvaluations = evaluations?.some(e => e.judge_id === 'sandbox');
+  const hasBQEvaluations = evaluations?.some(e => e.judge_id === 'BQ AI Function');
+  const isRunning = isAgentRunning || isBQRunning;
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isRunning) {
+      interval = setInterval(() => {
+        mutateEvaluations();
+        mutateProject();
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [isRunning, mutateEvaluations, mutateProject]);
+
+  const handleJudgeAgent = async () => {
+    if (hasAgentEvaluations && !window.confirm('Agent evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
+      return;
+    }
+
+    setIsTriggeringAgent(true);
+    setJudgeMessage(null);
+    try {
+      const response = await fetch(`/api/projects/${id}/judge`, { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to start judging');
+      setJudgeMessage({ text: 'Agent judging task started!', type: 'success' });
+      setTimeout(() => mutateEvaluations(), 1000);
+    } catch {
+      setJudgeMessage({ text: 'Error starting judging', type: 'error' });
+    } finally {
+      setIsTriggeringAgent(false);
+      setTimeout(() => setJudgeMessage(null), 3000);
+    }
+  };
+
+  const handleJudgeBQ = async () => {
+    if (hasBQEvaluations && !window.confirm('BQ evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
+      return;
+    }
+
+    setIsTriggeringBQ(true);
+    setJudgeMessage(null);
+    try {
+      const response = await fetch(`/api/projects/${id}/judge/bq`, { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to start judging');
+      setJudgeMessage({ text: 'BQ AI judging task started!', type: 'success' });
+      setTimeout(() => mutateEvaluations(), 1000);
+    } catch {
+      setJudgeMessage({ text: 'Error starting judging', type: 'error' });
+    } finally {
+      setIsTriggeringBQ(false);
+      setTimeout(() => setJudgeMessage(null), 3000);
+    }
+  };
 
   if (isProjectLoading || isEvalLoading || isHackathonLoading) return <div className="p-4">Loading details...</div>;
   if (projectError) return <div className="p-4 text-red-500">Failed to load project details.</div>;
@@ -39,15 +99,48 @@ export default function ProjectDetail() {
         </button>
         
         {project && (
-          <div className="bg-white p-6 rounded-lg border border-slate-200 mb-6 shadow-sm">
-            <h2 className="text-3xl font-bold mb-2">{project.title}</h2>
-            <div className="text-gray-600 space-y-1">
-              <p><span className="font-semibold text-gray-700">Team:</span> {project.team_name}</p>
-              {project.url && (
-                <p><span className="font-semibold text-gray-700">Project URL:</span> <a href={project.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{project.url}</a></p>
-              )}
-              {project.github_url && (
-                <p><span className="font-semibold text-gray-700">GitHub:</span> <a href={project.github_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{project.github_url}</a></p>
+          <div className="bg-white p-6 rounded-lg border border-slate-200 mb-6 shadow-sm flex justify-between items-start">
+            <div className="flex-1">
+              <h2 className="text-3xl font-bold mb-2">{project.title}</h2>
+              <div className="text-gray-600 space-y-1">
+                <p><span className="font-semibold text-gray-700">Team:</span> {project.team_name}</p>
+                {project.url && (
+                  <p><span className="font-semibold text-gray-700">Project URL:</span> <a href={project.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{project.url}</a></p>
+                )}
+                {project.github_url && (
+                  <p><span className="font-semibold text-gray-700">GitHub:</span> <a href={project.github_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{project.github_url}</a></p>
+                )}
+                <p className="text-xl mt-4 font-bold text-slate-800">Overall Score: <span className="text-blue-600">{typeof project.score === 'number' ? project.score.toFixed(2) : 'N/A'}</span></p>
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={handleJudgeAgent}
+                  disabled={isTriggeringAgent || isAgentRunning}
+                  className={`inline-block border px-6 py-3 rounded-lg font-bold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isAgentRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
+                    'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md active:scale-95'
+                  }`}
+                >
+                  {isTriggeringAgent ? 'Starting...' : isAgentRunning ? 'Judging...' : hasAgentEvaluations ? 'Rerun Agent' : 'Run Agent'}
+                </button>
+                <button
+                  onClick={handleJudgeBQ}
+                  disabled={isTriggeringBQ || isBQRunning}
+                  className={`inline-block border px-6 py-3 rounded-lg font-bold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isBQRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
+                    'border-green-600 bg-green-600 text-white hover:bg-green-700 hover:shadow-md active:scale-95'
+                  }`}
+                >
+                  {isTriggeringBQ ? 'Starting...' : isBQRunning ? 'Judging...' : hasBQEvaluations ? 'Rerun BQ AI' : 'Run BQ AI'}
+                </button>
+              </div>
+              {judgeMessage && (
+                <p className={`text-sm font-medium ${judgeMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+                  {judgeMessage.text}
+                </p>
               )}
             </div>
           </div>
@@ -135,3 +228,4 @@ export default function ProjectDetail() {
     </div>
   );
 }
+
