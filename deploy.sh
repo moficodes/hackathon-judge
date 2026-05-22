@@ -855,7 +855,8 @@ if [ "$RUN_K8S" = "true" ]; then
   bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
 
   log_info "Applying Kubernetes ConfigMap with environment variables..."
-  # All needed variables are already exported in Step 1
+  # Source setup-env.sh before envsubst to ensure all variables are set and exported
+  source ./setup-env.sh >/dev/null
   envsubst < k8s/configmap.yaml | kubectl apply -f -
 
   log_info "Applying Sandbox Router..."
