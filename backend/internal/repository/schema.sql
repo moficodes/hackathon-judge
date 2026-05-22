@@ -20,21 +20,11 @@ SET @@dataset_id = 'hackathon_judge';
 
 CREATE SCHEMA IF NOT EXISTS `hackathon_judge`;
 
-
 -- Create a Connection Resource
 CREATE CONNECTION IF NOT EXISTS `<<REGION>>.connection-resource`
 OPTIONS (
   connection_type = 'CLOUD_RESOURCE'
 );
-
--- Grant permissions for the connection resource
-GRANT `roles/aiplatform.user`
-ON PROJECT `<<YOUR PROJECT ID>>`
-TO "connection:<<REGION>>.connection-resource";
-
-GRANT `roles/storage.objectViewer`
-ON PROJECT `<<YOUR PROJECT ID>>`
-TO "connection:<<REGION>>.connection-resource";
 
 -- Hackathons Table
 CREATE TABLE IF NOT EXISTS `hackathons` (
@@ -63,6 +53,13 @@ CREATE TABLE IF NOT EXISTS `projects` (
     score FLOAT64
 );
 
+SELECT "1" as projects_check  from `projects`;
+-- Grant permissions for the connection resource
+-- Forcing time to propagate - TODO: split scripts
+GRANT `roles/storage.objectViewer`
+ON PROJECT `<<YOUR PROJECT ID>>`
+TO "connection:<<REGION>>.connection-resource";
+
 -- Evaluations Table
 CREATE TABLE IF NOT EXISTS `evaluations` (
     id STRING,
@@ -75,6 +72,14 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
     created_at TIMESTAMP
 );
 
+
+GRANT `roles/aiplatform.user`
+ON PROJECT `<<YOUR PROJECT ID>>`
+TO "connection:<<REGION>>.connection-resource";
+
+-- Forcing a small pause 
+SELECT "1" as evaluations_check  from `evaluations`;
+
 -- -- Insert sample evaluation criteria with weights
 -- INSERT INTO `criteria` (name, prompt, weight)
 -- VALUES
@@ -85,7 +90,6 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
 
 
 -- Create an External Table
--- TODO: subatin
 CREATE EXTERNAL TABLE IF NOT EXISTS `submissions_objects`
 WITH CONNECTION `<<REGION>>.connection-resource`
 OPTIONS (
