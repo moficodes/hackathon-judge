@@ -559,6 +559,24 @@ fi
 if [ "$RUN_BQ" = "true" ]; then
   log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
 
+
+  log_info "Ensuring stabby bucket exists and is populated..."
+  if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
+    log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
+    gcloud storage buckets create "gs://${GOOGLE_CLOUD_PROJECT}-stabby" --location="${GOOGLE_CLOUD_REGION}"
+    log_success "Bucket created!"
+  else
+    log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
+  fi
+
+  if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
+    log_info "Uploading READMEs to stabby bucket..."
+    gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
+    log_success "READMEs uploaded!"
+  else
+    log_warning "No readmes directory found or directory is empty. Skipping upload."
+  fi
+
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
   if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
     log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
