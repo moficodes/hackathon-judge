@@ -493,9 +493,10 @@ func (r *BigQueryRepo) JudgeProjectWithBQ(projectID string, evaluationID string)
 		  SELECT p.id, p.readme_ref, p.hackathon_id
 		  FROM `+"`"+`%s.%s.projects`+"`"+` p
 		  WHERE p.id = @project_id
+		  LIMIT 1
 		),
 		CriteriaToScore AS (
-		  SELECT c.id, c.name, c.description, c.max_score, c.weight
+		  SELECT c.id, c.name, c.description, c.max_score, c.weight, pi.readme_ref
 		  FROM `+"`"+`%s.%s.hackathons`+"`"+` h, UNNEST(h.criteria) c
 		  JOIN ProjectInfo pi ON h.id = pi.hackathon_id
 		),
@@ -503,7 +504,7 @@ func (r *BigQueryRepo) JudgeProjectWithBQ(projectID string, evaluationID string)
 		  SELECT
 		    name, description, weight, max_score,
 		    AI.SCORE(
-		      prompt => ('Evaluate this project against the following rubric:', description, OBJ.GET_ACCESS_URL((SELECT readme_ref FROM ProjectInfo), 'r'))
+		      prompt => ('Evaluate this project against the following rubric:', description, OBJ.GET_ACCESS_URL(readme_ref, 'r'))
 		    ) as score
 		  FROM CriteriaToScore
 		)
