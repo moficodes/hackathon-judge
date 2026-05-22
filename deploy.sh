@@ -569,6 +569,34 @@ if [ "$RUN_BQ" = "true" ]; then
     log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
   fi
 
+  log_info "Fetching READMEs from GitHub..."
+  mkdir -p readmes
+  rm -f readmes/*
+  
+  if [ -f "projects.csv" ]; then
+    # Skip header and read pipe-separated file
+    tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
+      if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
+        # Extract owner and repo from URL
+        repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
+        
+        if [ -n "$repo_path" ]; then
+          raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
+          log_info "  Downloading README for $name..."
+          if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url"; then
+            # Try master branch if main fails
+            raw_url_master="https://raw.githubusercontent.com/$repo_path/master/README.md"
+            if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url_master"; then
+               log_warning "  Failed to download README for $name from main or master."
+            fi
+          fi
+        fi
+      fi
+    done
+  else
+    log_warning "projects.csv not found, cannot fetch READMEs."
+  fi
+
   if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
     log_info "Uploading READMEs to stabby bucket..."
     gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
