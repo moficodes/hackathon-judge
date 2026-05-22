@@ -57,7 +57,7 @@ log_error() {
 # Step 1: Load Environment Config
 # ------------------------------------------------------------------------------
 log_header "GOOGLE CLOUD Infrastructure Destruction & Cleanup System"
-log_step "1/6" "Loading Environment Configuration ⚙️"
+log_step "1/7" "Loading Environment Configuration ⚙️"
 
 ENV_FILE=".env"
 
@@ -108,7 +108,7 @@ gcloud config set project "$GOOGLE_CLOUD_PROJECT"
 # ------------------------------------------------------------------------------
 # Step 2: Delete Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
-log_step "2/6" "Deleting Pub/Sub topics and subscriptions 📨"
+log_step "2/7" "Deleting Pub/Sub topics and subscriptions 📨"
 
 delete_pubsub_sub() {
   local sub=$1
@@ -145,7 +145,7 @@ delete_pubsub_topic "${RESULTS_TOPIC:-}"
 # ------------------------------------------------------------------------------
 # Step 3: Delete GKE Autopilot Cluster
 # ------------------------------------------------------------------------------
-log_step "3/6" "Deleting GKE Autopilot Cluster 🚀"
+log_step "3/7" "Deleting GKE Autopilot Cluster 🚀"
 
 log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME..."
 if gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
@@ -167,7 +167,7 @@ fi
 # ------------------------------------------------------------------------------
 # Step 4: Delete Artifact Registry
 # ------------------------------------------------------------------------------
-log_step "4/6" "Deleting Artifact Registry Repository 📦"
+log_step "4/7" "Deleting Artifact Registry Repository 📦"
 
 log_info "Checking Artifact Registry repository: $ARTIFACT_REPO_NAME..."
 if gcloud artifacts repositories describe "$ARTIFACT_REPO_NAME" --location="$ARTIFACT_REGISTRY_LOCATION" &> /dev/null; then
@@ -187,7 +187,7 @@ fi
 # ------------------------------------------------------------------------------
 # Step 5: Delete BigQuery Dataset & Tables
 # ------------------------------------------------------------------------------
-log_step "5/6" "Deleting BigQuery Dataset & Tables 📊"
+log_step "5/7" "Deleting BigQuery Dataset & Tables 📊"
 
 log_info "Checking BigQuery dataset: $BQ_DATASET..."
 if bq show --project_id="$GOOGLE_CLOUD_PROJECT" "$BQ_DATASET" &>/dev/null; then
@@ -203,9 +203,27 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 6: Environment Clean up
+# Step 6: Delete Stabby Storage Bucket
 # ------------------------------------------------------------------------------
-log_step "6/6" "Removing Configuration File 🧹"
+log_step "6/7" "Deleting Stabby Storage Bucket 🪣"
+
+log_info "Checking Storage bucket: gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
+if gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &> /dev/null; then
+  log_warning "Deleting Storage bucket 'gs://${GOOGLE_CLOUD_PROJECT}-stabby' recursively..."
+  if gcloud storage rm --recursive "gs://${GOOGLE_CLOUD_PROJECT}-stabby"; then
+    log_success "Storage bucket successfully deleted!"
+  else
+    log_error "Failed to delete Storage bucket."
+    exit 1
+  fi
+else
+  log_info "Storage bucket 'gs://${GOOGLE_CLOUD_PROJECT}-stabby' does not exist. Skipping."
+fi
+
+# ------------------------------------------------------------------------------
+# Step 7: Environment Clean up
+# ------------------------------------------------------------------------------
+log_step "7/7" "Removing Configuration File 🧹"
 
 read -p "Do you want to remove the local $ENV_FILE file as well? [y/N]: " remove_env
 
