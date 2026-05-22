@@ -30,11 +30,11 @@ NC='\033[0m' # No Color
 
 # Ensure the script is being sourced, not executed directly.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  echo -e "${RED}❌ ERROR: This script must be sourced to modify your current shell environment.${NC}"
-  echo -e "Please run it like this:"
-  echo -e "${BOLD}  source ./setup-env.sh${NC}"
-  echo -e "or"
-  echo -e "${BOLD}  . ./setup-env.sh${NC}"
+  echo -e "${RED}❌ ERROR: This script must be sourced to modify your current shell environment.${NC}" >&2
+  echo -e "Please run it like this:" >&2
+  echo -e "${BOLD}  source ./setup-env.sh${NC}" >&2
+  echo -e "or" >&2
+  echo -e "${BOLD}  . ./setup-env.sh${NC}" >&2
   exit 1
 fi
 
@@ -48,8 +48,8 @@ if [ -f ".env" ]; then
   source .env
   set +a
 else
-  echo -e "${RED}❌ ERROR: .env file not found in the current directory.${NC}"
-  echo -e "Please ensure you have run a deployment script (like deploy.sh) to generate it, or create it from .env.example."
+  echo -e "${RED}❌ ERROR: .env file not found in the current directory.${NC}" >&2
+  echo -e "Please ensure you have run a deployment script (like deploy.sh) to generate it, or create it from .env.example." >&2
   return 1
 fi
 
@@ -69,29 +69,33 @@ REQUIRED_VARS=(
 MISSING_VARS=false
 for var in "${REQUIRED_VARS[@]}"; do
   if [ -z "${!var:-}" ]; then
-    echo -e "${RED}❌ ERROR: Required variable '$var' is not set or is empty.${NC}"
+    echo -e "${RED}❌ ERROR: Required variable '$var' is not set or is empty.${NC}" >&2
     MISSING_VARS=true
   fi
 done
 
 if [ "$MISSING_VARS" = "true" ]; then
-  echo -e "${YELLOW}⚠️  Please update your .env file with the missing variables and try again.${NC}"
+  echo -e "${YELLOW}⚠️  Please update your .env file with the missing variables and try again.${NC}" >&2
   return 1
 fi
 
 # 2. Determine and export COMMIT_SHA
 echo -e "${BLUE}ℹ${NC} Determining COMMIT_SHA for Docker image tags..."
 
-if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
-  if [ -n "$(git status --porcelain)" ]; then
-    echo -e "${YELLOW}⚠️  Git repository has uncommitted changes (dirty state).${NC}"
-    export COMMIT_SHA="dirty-$(date +%s)"
+if [ -z "${COMMIT_SHA:-}" ]; then
+  if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
+    if [ -n "$(git status --porcelain)" ]; then
+      echo -e "${YELLOW}⚠️  Git repository has uncommitted changes (dirty state).${NC}" >&2
+      export COMMIT_SHA="dirty-$(date +%s)"
+    else
+      export COMMIT_SHA=$(git rev-parse --short HEAD)
+    fi
   else
-    export COMMIT_SHA=$(git rev-parse --short HEAD)
+    echo -e "${YELLOW}⚠️  Git not detected or repository not initialized.${NC}" >&2
+    export COMMIT_SHA="manual-$(date +%s)"
   fi
 else
-  echo -e "${YELLOW}⚠️  Git not detected or repository not initialized.${NC}"
-  export COMMIT_SHA="manual-$(date +%s)"
+  echo -e "${BLUE}ℹ${NC} Using existing COMMIT_SHA: ${COMMIT_SHA}"
 fi
 
 echo -e "${GREEN}✅ Setup complete!${NC}"
