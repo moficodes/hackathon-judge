@@ -54,7 +54,7 @@ spec:
               app: sandbox-router
       containers:
       - name: router
-        image: us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/sandbox-router:latest-main
+        image: registry.k8s.io/agent-sandbox/sandbox-router:v0.4.6
         # imagePullPolicy: Never  # Uncomment when using a locally loaded image (kind load / minikube image load)
         env:
         - name: PROXY_TIMEOUT_SECONDS

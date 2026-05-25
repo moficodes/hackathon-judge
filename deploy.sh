@@ -803,14 +803,14 @@ if [ "$RUN_K8S" = "true" ]; then
 
   log_info "Installing Agent Sandbox CRDs..."
 
-  VERSION=$(curl https://api.github.com/repos/kubernetes-sigs/agent-sandbox/releases/latest | jq -r '.tag_name')
+  VERSION="v0.4.6"
 
-  # Using v0.4.5 as determined by web research
+  # Using v0.4.6 as requested
   if ! kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml; then
     log_error "Failed to install Agent Sandbox CRDs."
     exit 1
   fi
-  # Using v0.4.5 as determined by web research
+  # Using v0.4.6 as requested
   if ! kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml; then
     log_error "Failed to install Agent Sandbox CRDs."
     exit 1
