@@ -574,53 +574,10 @@ if [ "$RUN_BQ" = "true" ]; then
   log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
 
 
-  log_info "Ensuring stabby bucket exists and is populated..."
-  if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
-    log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
-    gcloud storage buckets create "gs://${GOOGLE_CLOUD_PROJECT}-stabby" --location="${GOOGLE_CLOUD_REGION}"
-    log_success "Bucket created!"
-  else
-    log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
-  fi
-
-  log_info "Fetching READMEs from GitHub..."
-  mkdir -p readmes
-  rm -f readmes/*
-  
-  if [ -f "projects.csv" ]; then
-    # Skip header and read pipe-separated file
-    tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
-      if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
-        # Extract owner and repo from URL
-        repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
-        
-        if [ -n "$repo_path" ]; then
-          raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
-          log_info "  Downloading README for $name..."
-          if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url"; then
-            # Try master branch if main fails
-            raw_url_master="https://raw.githubusercontent.com/$repo_path/master/README.md"
-            if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url_master"; then
-               log_warning "  Failed to download README for $name from main or master."
-            fi
-          fi
-        fi
-      fi
-    done
-  else
-    log_warning "projects.csv not found, cannot fetch READMEs."
-  fi
-
-  if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
-    log_info "Uploading READMEs to stabby bucket..."
-    gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
-    log_success "READMEs uploaded!"
-  else
-    log_warning "No readmes directory found or directory is empty. Skipping upload."
-  fi
-
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
+  DATASET_EXISTS=true
   if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
+    DATASET_EXISTS=false
     log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
     if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
         --location="$GOOGLE_CLOUD_REGION" \
@@ -634,86 +591,135 @@ if [ "$RUN_BQ" = "true" ]; then
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
   fi
 
-  log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
-  if [ -f "backend/internal/repository/schema.sql" ]; then
-    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
-        -e "s/<<REGION>>/${GOOGLE_CLOUD_REGION}/g" \
-        -e "s/hackathon_judge/${BQ_DATASET}/g" \
-        backend/internal/repository/schema.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
-    log_success "schema.sql successfully applied!"
-    
-    log_info "Granting required roles to the BigQuery connection service account..."
-    # Extract the service account created for the connection
-    CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId')
-    
-    if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
-      log_info "  Found Connection Service Account: $CONNECTION_SA"
-      
-      log_info "  Granting roles/aiplatform.user..."
-      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-        --member="serviceAccount:$CONNECTION_SA" \
-        --role="roles/aiplatform.user" \
-        --condition=None >/dev/null 2>&1
-        
-      log_info "  Granting roles/storage.objectViewer..."
-      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-        --member="serviceAccount:$CONNECTION_SA" \
-        --role="roles/storage.objectViewer" \
-        --condition=None >/dev/null 2>&1
-        
-      log_success "Roles granted to connection service account!"
+  if [ "$DATASET_EXISTS" = "false" ]; then
+    log_info "Ensuring stabby bucket exists and is populated..."
+    if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
+      log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
+      gcloud storage buckets create "gs://${GOOGLE_CLOUD_PROJECT}-stabby" --location="${GOOGLE_CLOUD_REGION}"
+      log_success "Bucket created!"
     else
-      log_error "Could not find service account for BigQuery connection."
-      log_warning "You may need to manually grant roles/aiplatform.user and roles/storage.objectViewer to the connection service account."
+      log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
     fi
-  else
-    log_warning "schema.sql not found. Skipping schema setup."
-  fi
 
-  log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
-  if [ -f "backend/internal/repository/seeds.sql" ]; then
-    sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
-    log_success "seeds.sql successfully applied!"
-  else
-    log_warning "seeds.sql not found. Skipping seed ingestion."
-  fi
-
-  # Map CSV files to their BigQuery tables
-  CSV_TABLE_MAP=(
-    "hackathons.csv:hackathons"
-    "projects.csv:projects"
-    "evaluations.csv:evaluations"
-  )
-
-  for map in "${CSV_TABLE_MAP[@]}"; do
-    csv_file="${map%%:*}"
-    table_name="${map##*:}"
+    log_info "Fetching READMEs from GitHub..."
+    mkdir -p readmes
+    rm -f readmes/*
     
-    log_info "Checking table: $table_name in dataset $BQ_DATASET..."
-    
-    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.$table_name" &>/dev/null; then
-      if [ -f "$csv_file" ]; then
-        log_info "Ingesting and creating table '$table_name' from CSV '$csv_file'..."
-        # Run bq load dynamically detecting schema with autodetect, using pipe | separator
-        if bq --project_id="$GOOGLE_CLOUD_PROJECT" load \
-            --location="$GOOGLE_CLOUD_REGION" \
-            --source_format=CSV \
-            --field_delimiter="|" \
-            --autodetect \
-            "$BQ_DATASET.$table_name" \
-            "$csv_file"; then
-          log_success "Table '$table_name' successfully created and populated!"
-        else
-          log_error "Failed to load CSV data into table '$table_name'."
-          exit 1
+    if [ -f "projects.csv" ]; then
+      # Skip header and read pipe-separated file
+      tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
+        if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
+          # Extract owner and repo from URL
+          repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
+          
+          if [ -n "$repo_path" ]; then
+            raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
+            log_info "  Downloading README for $name..."
+            if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url"; then
+              # Try master branch if main fails
+              raw_url_master="https://raw.githubusercontent.com/$repo_path/master/README.md"
+              if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url_master"; then
+                 log_warning "  Failed to download README for $name from main or master."
+              fi
+            fi
+          fi
         fi
+      done
+    else
+      log_warning "projects.csv not found, cannot fetch READMEs."
+    fi
+
+    if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
+      log_info "Uploading READMEs to stabby bucket..."
+      gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
+      log_success "READMEs uploaded!"
+    else
+      log_warning "No readmes directory found or directory is empty. Skipping upload."
+    fi
+
+    log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
+    if [ -f "backend/internal/repository/schema.sql" ]; then
+      sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
+          -e "s/<<REGION>>/${GOOGLE_CLOUD_REGION}/g" \
+          -e "s/hackathon_judge/${BQ_DATASET}/g" \
+          backend/internal/repository/schema.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
+      log_success "schema.sql successfully applied!"
+      
+      log_info "Granting required roles to the BigQuery connection service account..."
+      # Extract the service account created for the connection
+      CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId')
+      
+      if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
+        log_info "  Found Connection Service Account: $CONNECTION_SA"
+        
+        log_info "  Granting roles/aiplatform.user..."
+        gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+          --member="serviceAccount:$CONNECTION_SA" \
+          --role="roles/aiplatform.user" \
+          --condition=None >/dev/null 2>&1
+          
+        log_info "  Granting roles/storage.objectViewer..."
+        gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+          --member="serviceAccount:$CONNECTION_SA" \
+          --role="roles/storage.objectViewer" \
+          --condition=None >/dev/null 2>&1
+          
+        log_success "Roles granted to connection service account!"
       else
-        log_warning "CSV file '$csv_file' not found at root. Skipping table '$table_name' load."
+        log_error "Could not find service account for BigQuery connection."
+        log_warning "You may need to manually grant roles/aiplatform.user and roles/storage.objectViewer to the connection service account."
       fi
     else
-      log_success "Table '$table_name' already exists. Skipping ingestion."
+      log_warning "schema.sql not found. Skipping schema setup."
     fi
-  done
+
+    log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
+    if [ -f "backend/internal/repository/seeds.sql" ]; then
+      sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
+      log_success "seeds.sql successfully applied!"
+    else
+      log_warning "seeds.sql not found. Skipping seed ingestion."
+    fi
+
+    # Map CSV files to their BigQuery tables
+    CSV_TABLE_MAP=(
+      "hackathons.csv:hackathons"
+      "projects.csv:projects"
+      "evaluations.csv:evaluations"
+    )
+
+    for map in "${CSV_TABLE_MAP[@]}"; do
+      csv_file="${map%%:*}"
+      table_name="${map##*:}"
+      
+      log_info "Checking table: $table_name in dataset $BQ_DATASET..."
+      
+      if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.$table_name" &>/dev/null; then
+        if [ -f "$csv_file" ]; then
+          log_info "Ingesting and creating table '$table_name' from CSV '$csv_file'..."
+          # Run bq load dynamically detecting schema with autodetect, using pipe | separator
+          if bq --project_id="$GOOGLE_CLOUD_PROJECT" load \
+              --location="$GOOGLE_CLOUD_REGION" \
+              --source_format=CSV \
+              --field_delimiter="|" \
+              --autodetect \
+              "$BQ_DATASET.$table_name" \
+              "$csv_file"; then
+            log_success "Table '$table_name' successfully created and populated!"
+          else
+            log_error "Failed to load CSV data into table '$table_name'."
+            exit 1
+          fi
+        else
+          log_warning "CSV file '$csv_file' not found at root. Skipping table '$table_name' load."
+        fi
+      else
+        log_success "Table '$table_name' already exists. Skipping ingestion."
+      fi
+    done
+  else
+    log_info "Skipping initial data ingestion as BigQuery dataset '$BQ_DATASET' already exists to prevent duplication."
+  fi
 else
   log_info "Skipping Step 8: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
 fi
