@@ -16,6 +16,7 @@ package service
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +39,7 @@ type hackathonService struct {
 	projectRepo domain.ProjectRepository
 	evalRepo    domain.EvaluationRepository
 	publisher   domain.TaskPublisher
+	scoreMu     sync.Mutex
 }
 
 func NewHackathonService(repo domain.HackathonRepository, projectRepo domain.ProjectRepository, evalRepo domain.EvaluationRepository, publisher domain.TaskPublisher) HackathonService {
@@ -114,6 +116,9 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 		evalTotal += cs.Score * weight
 	}
 	eval.TotalScore = evalTotal
+
+	s.scoreMu.Lock()
+	defer s.scoreMu.Unlock()
 
 	if err := s.evalRepo.Save(eval); err != nil {
 		return err
@@ -213,7 +218,7 @@ func (s *hackathonService) TriggerJudging(projectID string, useBQ bool) (string,
 			}
 
 			if eval.Status == "SUCCESS" {
-				// Recalculate average project score
+				s.scoreMu.Lock()
 				evals, err := s.evalRepo.GetByProjectID(projectID)
 				if err == nil {
 					var total float64
@@ -229,6 +234,7 @@ func (s *hackathonService) TriggerJudging(projectID string, useBQ bool) (string,
 						s.projectRepo.UpdateScore(projectID, average)
 					}
 				}
+				s.scoreMu.Unlock()
 			}
 		}()
 
