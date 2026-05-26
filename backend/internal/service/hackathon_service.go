@@ -41,7 +41,49 @@ type hackathonService struct {
 }
 
 func NewHackathonService(repo domain.HackathonRepository, projectRepo domain.ProjectRepository, evalRepo domain.EvaluationRepository, publisher domain.TaskPublisher) HackathonService {
-	return &hackathonService{repo: repo, projectRepo: projectRepo, evalRepo: evalRepo, publisher: publisher}
+	s := &hackathonService{repo: repo, projectRepo: projectRepo, evalRepo: evalRepo, publisher: publisher}
+	s.startWatchdog(5*time.Minute, 15*time.Minute)
+	return s
+}
+
+func (s *hackathonService) startWatchdog(interval, timeout time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			s.checkStuckEvaluations(timeout)
+		}
+	}()
+}
+
+func (s *hackathonService) checkStuckEvaluations(timeout time.Duration) {
+	hackathons, err := s.repo.GetAll()
+	if err != nil {
+		fmt.Printf("watchdog: failed to get hackathons: %v\n", err)
+		return
+	}
+	for _, h := range hackathons {
+		projects, err := s.projectRepo.GetByHackathonID(h.ID)
+		if err != nil {
+			fmt.Printf("watchdog: failed to get projects for hackathon %s: %v\n", h.ID, err)
+			continue
+		}
+		for _, p := range projects {
+			evals, err := s.evalRepo.GetByProjectID(p.ID)
+			if err != nil {
+				fmt.Printf("watchdog: failed to get evaluations for project %s: %v\n", p.ID, err)
+				continue
+			}
+			for _, e := range evals {
+				if e.Status == "RUNNING" && time.Since(e.CreatedAt) > timeout {
+					e.Status = "FAILED"
+					e.Comment = fmt.Sprintf("Evaluation timed out after %d minutes", int(timeout.Minutes()))
+					if err := s.evalRepo.Update(e); err != nil {
+						fmt.Printf("watchdog: failed to update evaluation %s: %v\n", e.ID, err)
+					}
+				}
+			}
+		}
+	}
 }
 
 func (s *hackathonService) ListHackathons() ([]domain.Hackathon, error) {
