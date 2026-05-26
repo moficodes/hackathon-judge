@@ -129,3 +129,53 @@ func TestTriggerJudgingDirectBQ(t *testing.T) {
 	assert.NoError(t, err)
 	assert.InDelta(t, 4.35, p.Score, 0.0001)
 }
+
+func TestCheckStuckEvaluations(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+
+	stuckEval := domain.Evaluation{
+		ID:        "stuck-1",
+		ProjectID: "p1",
+		JudgeID:   "sandbox",
+		Status:    "RUNNING",
+		CreatedAt: time.Now().Add(-20 * time.Minute),
+	}
+	err := repo.Save(stuckEval)
+	assert.NoError(t, err)
+
+	recentEval := domain.Evaluation{
+		ID:        "recent-1",
+		ProjectID: "p1",
+		JudgeID:   "sandbox",
+		Status:    "RUNNING",
+		CreatedAt: time.Now().Add(-5 * time.Minute),
+	}
+	err = repo.Save(recentEval)
+	assert.NoError(t, err)
+
+	successEval := domain.Evaluation{
+		ID:        "done-1",
+		ProjectID: "p1",
+		JudgeID:   "sandbox",
+		Status:    "SUCCESS",
+		CreatedAt: time.Now().Add(-30 * time.Minute),
+	}
+	err = repo.Save(successEval)
+	assert.NoError(t, err)
+
+	service.CheckStuckEvaluationsForTest(svc, 15*time.Minute)
+
+	e, err := repo.GetEvaluationByID("stuck-1")
+	assert.NoError(t, err)
+	assert.Equal(t, "FAILED", e.Status)
+	assert.Equal(t, "Evaluation timed out after 15 minutes", e.Comment)
+
+	e, err = repo.GetEvaluationByID("recent-1")
+	assert.NoError(t, err)
+	assert.Equal(t, "RUNNING", e.Status)
+
+	e, err = repo.GetEvaluationByID("done-1")
+	assert.NoError(t, err)
+	assert.Equal(t, "SUCCESS", e.Status)
+}
