@@ -782,7 +782,7 @@ if [ "$RUN_BUILD" = "true" ]; then
     log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
   else
     log_info "Triggering Google Cloud Build to compile and package all services..."
-    if gcloud builds submit --config cloudbuild.yaml . \
+    if gcloud builds submit --region="$GOOGLE_CLOUD_REGION" --config cloudbuild.yaml . \
         --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
       log_success "Cloud Build completed successfully! All containers pushed to registry."
     else
