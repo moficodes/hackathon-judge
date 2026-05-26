@@ -449,6 +449,7 @@ if [ "$RUN_APIS" = "true" ]; then
 
   APIS_TO_ENABLE=(
     "container.googleapis.com"            # Google Kubernetes Engine
+    "generativelanguage.googleapis.com"   # Gemini API
     "artifactregistry.googleapis.com"     # Artifact Registry
     "cloudbuild.googleapis.com"           # Cloud Build
     "pubsub.googleapis.com"               # Cloud Pub/Sub
