@@ -572,12 +572,15 @@ fi
 # ------------------------------------------------------------------------------
 if [ "$RUN_BQ" = "true" ]; then
   log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
+  # Workaround for bq error SystemError: buffer overflow
+  export COLUMNS=80
+  export LINES=24
 
 
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
-  DATASET_EXISTS=true
+  DATASET_CREATED=false
   if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
-    DATASET_EXISTS=false
+    DATASET_CREATED=true
     log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
     if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
         --location="$GOOGLE_CLOUD_REGION" \
@@ -591,7 +594,7 @@ if [ "$RUN_BQ" = "true" ]; then
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
   fi
 
-  if [ "$DATASET_EXISTS" = "false" ]; then
+  if true; then
     log_info "Ensuring stabby bucket exists and is populated..."
     if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
       log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
@@ -717,8 +720,18 @@ if [ "$RUN_BQ" = "true" ]; then
         log_success "Table '$table_name' already exists. Skipping ingestion."
       fi
     done
-  else
-    log_info "Skipping initial data ingestion as BigQuery dataset '$BQ_DATASET' already exists to prevent duplication."
+
+    # Check that data exists in the tables
+    for map in "${CSV_TABLE_MAP[@]}"; do
+      table_name="${map##*:}"
+      log_info "Verifying table data: $table_name..."
+      ROW_COUNT=$(bq query --project_id="$GOOGLE_CLOUD_PROJECT" --use_legacy_sql=false --format=csv "SELECT COUNT(*) FROM \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.${table_name}\`" | tail -n 1)
+      if [ "$ROW_COUNT" = "0" ]; then
+        log_warning "Table \`$table_name\` is empty. You may need to run this step again or manually load the data."
+      else
+        log_success "Table \`$table_name\` has $ROW_COUNT rows."
+      fi
+    done
   fi
 else
   log_info "Skipping Step 8: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
