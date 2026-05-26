@@ -99,31 +99,39 @@ async def execute_command(request: ExecuteRequest):
         )
 
 @app.post("/upload", summary="Upload a file to the sandbox")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(path: str | None = None, file: UploadFile = File(...)):
     """
-    Receives a file and saves it to the sandbox directory.
+    Receives a file and saves it to the /app directory in the sandbox.
     """
     try:
-        logger.info("Attempting to save '%s'", file.filename)
-        file_path = os.path.join(SANDBOX_DIR, file.filename)
+        logging.info(f"--- UPLOAD_FILE CALLED: Attempting to save '{file.filename}' (requested path: '{path}') ---")
+        if path is not None:
+            file_path = get_safe_path(path)
+        else:
+            file_path = get_safe_path(file.filename)
 
-        content = await file.read()
-        def write_file():
-            with open(file_path, "wb") as f:
-                f.write(content)
-        
-        await asyncio.to_thread(write_file)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+
+        filename_to_return = path if path else file.filename
         return JSONResponse(
             status_code=200,
-            content={"message": f"File '{file.filename}' uploaded successfully."}
+            content={"message": f"File '{filename_to_return}' uploaded successfully."}
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=403,
+            content={"message": f"Access denied: {str(e)}"}
         )
     except Exception as e:
-        logger.exception("File upload failed for '%s', error: '%s'", file.filename, str(e))
+        logging.exception("An error occurred during file upload.")
         return JSONResponse(
             status_code=500,
             content={"message": f"File upload failed: {str(e)}"}
         )
+
 
 @app.get("/download/{encoded_file_path:path}", summary="Download a file from the sandbox")
 async def download_file(encoded_file_path: str):
@@ -145,6 +153,7 @@ async def download_file(encoded_file_path: str):
 
     logger.error("File not found for download: '%s'", full_path)
     return JSONResponse(status_code=404, content={"message": "File not found"})
+
 
 @app.get("/list/{encoded_file_path:path}", summary="List files in a directory")
 async def list_files(encoded_file_path: str):
