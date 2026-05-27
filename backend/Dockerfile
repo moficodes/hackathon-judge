@@ -13,16 +13,16 @@
 # limitations under the License.
 
 # Build Stage
-FROM golang:1.25.3-alpine AS builder
+FROM golang:1.25.3-bookworm AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /server cmd/api/main.go
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -o /server cmd/api/main.go
 
 # Run Stage
-FROM alpine:3.20
-RUN apk --no-cache add ca-certificates
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /
 COPY --from=builder /server /server
 EXPOSE 8080

@@ -15,7 +15,7 @@
 # Stage 1: Builder for Go and binaries
 FROM debian:bookworm-slim AS builder
 
-RUN apt-get update && apt-get install -y curl tar gnupg
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt-get update && apt-get install -y curl tar gnupg
 
 # Install Go 1.26.2
 RUN curl -fsSL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -xzC /usr/local
@@ -33,7 +33,7 @@ ENV PATH=$PATH:$GO_PATH/bin:/home/sandbox/.local/bin
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/lib/playwright
 
 # Install system dependencies and tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt-get update && apt-get install -y --no-install-recommends \
     git \
     python3 \
     python3-pip \
@@ -78,7 +78,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} + || true
 
 # Install GitHub CLI (gh)
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
     && apt-get update \
@@ -86,19 +86,19 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (LTS v24.x) and Node package managers
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt --mount=type=cache,target=/root/.npm curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g npm@latest yarn pnpm playwright \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Playwright Chromium
-RUN npx playwright install chromium
+RUN --mount=type=cache,target=/root/.cache/ms-playwright npx playwright install chromium
 
 # Copy Go from builder
 COPY --from=builder /usr/local/go /usr/local/go
 
 # Install Gemini CLI
-RUN npm install -g @google/gemini-cli
+RUN --mount=type=cache,target=/root/.npm npm install -g @google/gemini-cli
 
 # Copy uv binary from official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -119,7 +119,7 @@ COPY --chown=sandbox:sandbox pyproject.toml README.md ./
 COPY --chown=sandbox:sandbox app/ ./app/
 
 # Sync dependencies using uv (creates .venv)
-RUN uv sync
+RUN --mount=type=cache,target=/home/sandbox/.cache/uv uv sync
 
 # Verify installations
 RUN node --version && \
