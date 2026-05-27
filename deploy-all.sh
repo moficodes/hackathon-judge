@@ -660,15 +660,83 @@ if [ "$RUN_BQ" = "true" ]; then
       log_warning "No readmes directory found or directory is empty. Skipping upload."
     fi
 
-    log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
-    if [ -f "backend/internal/repository/schema.sql" ]; then
-      sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
-          -e "s/<<REGION>>/${GOOGLE_CLOUD_REGION}/g" \
-          -e "s/hackathon_judge/${BQ_DATASET}/g" \
-          backend/internal/repository/schema.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
-      log_success "schema.sql successfully applied!"
+    log_info "Configuring BigQuery schema, connections, and tables inline..."
+    
+    BQ_SQL=$(cat <<EOF
+SET @@dataset_project_id = '${GOOGLE_CLOUD_PROJECT}';
+SET @@dataset_id = '${BQ_DATASET}';
+
+CREATE SCHEMA IF NOT EXISTS \`${BQ_DATASET}\`;
+
+CREATE CONNECTION IF NOT EXISTS \`${GOOGLE_CLOUD_REGION}.connection-resource\`
+OPTIONS (
+  connection_type = 'CLOUD_RESOURCE'
+);
+
+CREATE TABLE IF NOT EXISTS \`hackathons\` (
+    id STRING,
+    title STRING,
+    date TIMESTAMP,
+    description STRING,
+    goal STRING,
+    status STRING,
+    criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+    bonus_criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>
+);
+
+CREATE TABLE IF NOT EXISTS \`projects\` (
+    id STRING,
+    name STRING,
+    title STRING,
+    url STRING,
+    readme_ref STRUCT< uri STRING, version STRING, authorizer STRING, details JSON>,
+    github_url STRING,
+    team_name STRING,
+    document STRING,
+    processing_date TIMESTAMP,
+    hackathon_id STRING,
+    score FLOAT64
+);
+
+GRANT \`roles/storage.objectViewer\`
+ON PROJECT \`${GOOGLE_CLOUD_PROJECT}\`
+TO "connection:${GOOGLE_CLOUD_REGION}.connection-resource";
+
+CREATE TABLE IF NOT EXISTS \`evaluations\` (
+    id STRING,
+    project_id STRING,
+    judge_id STRING,
+    status STRING,
+    criteria_json ARRAY<STRUCT<name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+    total_score FLOAT64,
+    comment STRING,
+    created_at TIMESTAMP
+);
+
+GRANT \`roles/aiplatform.user\`
+ON PROJECT \`${GOOGLE_CLOUD_PROJECT}\`
+TO "connection:${GOOGLE_CLOUD_REGION}.connection-resource";
+
+CREATE EXTERNAL TABLE IF NOT EXISTS \`submissions_objects\`
+WITH CONNECTION \`${GOOGLE_CLOUD_REGION}.connection-resource\`
+OPTIONS (
+  object_metadata = 'SIMPLE',
+  uris = ['gs://${GOOGLE_CLOUD_PROJECT}-stabby/*']
+);
+
+-- Test the setup:
+SELECT ref.uri,
+AI.SCORE(prompt => ('Rate this project based on the documentation quality on a scale of 0 to 100. Good quality includes clarity, completeness, and organization. Also images and possibly videos', OBJ.GET_ACCESS_URL(ref, 'r'))),
+AI.GENERATE(prompt => ('Summarize this project', OBJ.GET_ACCESS_URL(ref, 'r') )).result as summary
+FROM \`submissions_objects\`
+WHERE uri LIKE ('%README%');
+EOF
+)
+
+    if echo "$BQ_SQL" | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"; then
+      log_success "BigQuery resources successfully configured inline!"
       
-      log_info "Granting required roles to the BigQuery connection service account..."
+      log_info "Granting required roles to the BigQuery connection service account via gcloud..."
       # Extract the service account created for the connection
       CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId')
       
@@ -693,7 +761,8 @@ if [ "$RUN_BQ" = "true" ]; then
         log_warning "You may need to manually grant roles/aiplatform.user and roles/storage.objectViewer to the connection service account."
       fi
     else
-      log_warning "schema.sql not found. Skipping schema setup."
+      log_error "Failed to configure BigQuery resources inline."
+      exit 1
     fi
 
     log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
