@@ -91,9 +91,7 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
         # Write criteria to markdown file
         sandbox.files.write('criteria.md', judging_criteria)
         
-        safe_prompt = shlex.quote(SANDBOX_PROMPT)
-        
-        sandbox.files.write('prompt.md', safe_prompt)
+        sandbox.files.write('prompt.md', SANDBOX_PROMPT)
         prompt = 'gemini --yolo -p "Use @criteria.md as a guide and follow @prompt.md for the prompt. Make sure the output is in JSON format and written to evaluation.json"'
         sandbox.commands.run(prompt, timeout=600)
         result_json = sandbox.files.read('evaluation.json')
