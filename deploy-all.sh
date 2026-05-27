@@ -155,7 +155,7 @@ prompt_var() {
 
   echo -e "\n${BOLD}${var_name}${NC}: ${description}"
   read -p "  Enter value [Default: ${default_val}]: " user_input
-  
+
   if [ -z "${user_input}" ]; then
     eval "${var_name}=\"${default_val}\""
   else
@@ -193,7 +193,7 @@ if [ -f "$ENV_FILE" ]; then
       var_val="${var_val%\"}"
       var_val="${var_val#\'}"
       var_val="${var_val%\'}"
-      
+
       case "$var_name" in
         GOOGLE_CLOUD_PROJECT) existing_GOOGLE_CLOUD_PROJECT="$var_val" ;;
         GOOGLE_CLOUD_REGION) existing_GOOGLE_CLOUD_REGION="$var_val" ;;
@@ -264,7 +264,7 @@ else
     if [ -z "$project_id_default" ] || [[ "$project_id_default" == *"(unset)"* ]]; then
       project_id_default="your-project-id-here"
     fi
-    
+
     while [ -z "${GOOGLE_CLOUD_PROJECT:-}" ] || [ "$GOOGLE_CLOUD_PROJECT" = "your-project-id-here" ]; do
       prompt_var "GOOGLE_CLOUD_PROJECT" "Google Cloud Project ID (must be a valid active GCP project)" "$project_id_default"
       if [ -z "${GOOGLE_CLOUD_PROJECT:-}" ] || [ "$GOOGLE_CLOUD_PROJECT" = "your-project-id-here" ]; then
@@ -519,7 +519,7 @@ if [ "$RUN_GKE" = "true" ]; then
   if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
     log_warning "GKE Autopilot Cluster does not exist. Initiating creation..."
     log_info "NOTE: GKE Autopilot cluster creation usually takes 5 to 10 minutes. Please be patient."
-    
+
     if gcloud container clusters create-auto "$CLUSTER_NAME" \
         --region="$GOOGLE_CLOUD_REGION" \
         --project="$GOOGLE_CLOUD_PROJECT"; then
@@ -627,14 +627,14 @@ if [ "$RUN_BQ" = "true" ]; then
     log_info "Fetching READMEs from GitHub..."
     mkdir -p readmes
     rm -f readmes/*
-    
+
     if [ -f "projects.csv" ]; then
       # Skip header and read pipe-separated file
       tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
         if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
           # Extract owner and repo from URL
           repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
-          
+
           if [ -n "$repo_path" ]; then
             raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
             log_info "  Downloading README for $name..."
@@ -660,40 +660,165 @@ if [ "$RUN_BQ" = "true" ]; then
       log_warning "No readmes directory found or directory is empty. Skipping upload."
     fi
 
-    log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
-    if [ -f "backend/internal/repository/schema.sql" ]; then
-      sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
-          -e "s/<<REGION>>/${GOOGLE_CLOUD_REGION}/g" \
-          -e "s/hackathon_judge/${BQ_DATASET}/g" \
-          backend/internal/repository/schema.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
-      log_success "schema.sql successfully applied!"
-      
-      log_info "Granting required roles to the BigQuery connection service account..."
-      # Extract the service account created for the connection
-      CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId')
-      
-      if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
-        log_info "  Found Connection Service Account: $CONNECTION_SA"
-        
-        log_info "  Granting roles/aiplatform.user..."
-        gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-          --member="serviceAccount:$CONNECTION_SA" \
-          --role="roles/aiplatform.user" \
-          --condition=None >/dev/null 2>&1
-          
-        log_info "  Granting roles/storage.objectViewer..."
-        gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-          --member="serviceAccount:$CONNECTION_SA" \
-          --role="roles/storage.objectViewer" \
-          --condition=None >/dev/null 2>&1
-          
-        log_success "Roles granted to connection service account!"
-      else
-        log_error "Could not find service account for BigQuery connection."
-        log_warning "You may need to manually grant roles/aiplatform.user and roles/storage.objectViewer to the connection service account."
+    log_info "Configuring BigQuery resources individually..."
+
+    # 1. Connection Creation & Check
+    log_info "Checking BigQuery connection: ${GOOGLE_CLOUD_REGION}.connection-resource..."
+    if ! bq show --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" &>/dev/null; then
+      log_info "  Connection does not exist. Creating BigQuery connection..."
+      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        "CREATE CONNECTION \`${GOOGLE_CLOUD_REGION}.connection-resource\` OPTIONS (connection_type = 'CLOUD_RESOURCE');" &>/dev/null; then
+        log_error "  Failed to create BigQuery connection."
+        exit 1
       fi
+      log_success "  BigQuery connection created successfully!"
     else
-      log_warning "schema.sql not found. Skipping schema setup."
+      log_success "  BigQuery connection already exists."
+    fi
+
+    # 2. Table hackathons Check & Creation
+    log_info "Checking table: hackathons..."
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.hackathons" &>/dev/null; then
+      log_info "  Table hackathons does not exist. Creating..."
+      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        "CREATE TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.hackathons\` (
+            id STRING,
+            title STRING,
+            date TIMESTAMP,
+            description STRING,
+            goal STRING,
+            status STRING,
+            criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+            bonus_criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>
+        );" &>/dev/null; then
+        log_error "  Failed to create hackathons table."
+        exit 1
+      fi
+      log_success "  Table hackathons created successfully!"
+    else
+      log_success "  Table hackathons already exists."
+    fi
+
+    # 3. Table projects Check & Creation
+    log_info "Checking table: projects..."
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.projects" &>/dev/null; then
+      log_info "  Table projects does not exist. Creating..."
+      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        "CREATE TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.projects\` (
+            id STRING,
+            name STRING,
+            title STRING,
+            url STRING,
+            readme_ref STRUCT< uri STRING, version STRING, authorizer STRING, details JSON>,
+            github_url STRING,
+            team_name STRING,
+            document STRING,
+            processing_date TIMESTAMP,
+            hackathon_id STRING,
+            score FLOAT64
+        );" &>/dev/null; then
+        log_error "  Failed to create projects table."
+        exit 1
+      fi
+      log_success "  Table projects created successfully!"
+    else
+      log_success "  Table projects already exists."
+    fi
+
+    # 4. Table evaluations Check & Creation
+    log_info "Checking table: evaluations..."
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.evaluations" &>/dev/null; then
+      log_info "  Table evaluations does not exist. Creating..."
+      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        "CREATE TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.evaluations\` (
+            id STRING,
+            project_id STRING,
+            judge_id STRING,
+            status STRING,
+            criteria_json ARRAY<STRUCT<name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
+            total_score FLOAT64,
+            comment STRING,
+            created_at TIMESTAMP
+        );" &>/dev/null; then
+        log_error "  Failed to create evaluations table."
+        exit 1
+      fi
+      log_success "  Table evaluations created successfully!"
+    else
+      log_success "  Table evaluations already exists."
+    fi
+
+    # 5. DDL Grants
+    log_info "Granting roles to connection via BQ DDL..."
+    if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+      "GRANT \`roles/storage.objectViewer\` ON PROJECT \`${GOOGLE_CLOUD_PROJECT}\` TO \"connection:${GOOGLE_CLOUD_REGION}.connection-resource\";" &>/dev/null; then
+      log_warning "  Failed to grant storage.objectViewer role via DDL. Will rely on gcloud fallback."
+    else
+      log_success "  Granted storage.objectViewer role via DDL."
+    fi
+
+    if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+      "GRANT \`roles/aiplatform.user\` ON PROJECT \`${GOOGLE_CLOUD_PROJECT}\` TO \"connection:${GOOGLE_CLOUD_REGION}.connection-resource\";" &>/dev/null; then
+      log_warning "  Failed to grant aiplatform.user role via DDL. Will rely on gcloud fallback."
+    else
+      log_success "  Granted aiplatform.user role via DDL."
+    fi
+
+    # 6. External Table submissions_objects Check & Creation
+    log_info "Checking external table: submissions_objects..."
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.submissions_objects" &>/dev/null; then
+      log_info "  External table submissions_objects does not exist. Creating..."
+      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        "CREATE EXTERNAL TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.submissions_objects\`
+        WITH CONNECTION \`${GOOGLE_CLOUD_REGION}.connection-resource\`
+        OPTIONS (
+          object_metadata = 'SIMPLE',
+          uris = ['gs://${GOOGLE_CLOUD_PROJECT}-stabby/*']
+        );" &>/dev/null; then
+        log_error "  Failed to create submissions_objects external table."
+        exit 1
+      fi
+      log_success "  External table submissions_objects created successfully!"
+    else
+      log_success "  External table submissions_objects already exists."
+    fi
+
+    # 7. gcloud IAM Grants Fallback
+    log_info "Granting required roles to the BigQuery connection service account via gcloud..."
+    CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId' 2>/dev/null || true)
+    
+    if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
+      log_info "  Found Connection Service Account: $CONNECTION_SA"
+      
+      log_info "  Granting roles/aiplatform.user..."
+      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+        --member="serviceAccount:$CONNECTION_SA" \
+        --role="roles/aiplatform.user" \
+        --condition=None >/dev/null 2>&1 || log_warning "  Failed to grant roles/aiplatform.user via gcloud."
+        
+      log_info "  Granting roles/storage.objectViewer..."
+      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+        --member="serviceAccount:$CONNECTION_SA" \
+        --role="roles/storage.objectViewer" \
+        --condition=None >/dev/null 2>&1 || log_warning "  Failed to grant roles/storage.objectViewer via gcloud."
+        
+      log_success "  gcloud IAM grants completed."
+    else
+      log_warning "  Could not find service account for BigQuery connection to apply gcloud fallback. DDL grants might be sufficient."
+    fi
+
+    # 8. Test Connection Query (Best effort)
+    log_info "Running BigQuery connection test query..."
+    TEST_SQL="SELECT ref.uri,
+      AI.SCORE(prompt => ('Rate this project based on the documentation quality on a scale of 0 to 100. Good quality includes clarity, completeness, and organization. Also images and possibly videos', OBJ.GET_ACCESS_URL(ref, 'r'))),
+      AI.GENERATE(prompt => ('Summarize this project', OBJ.GET_ACCESS_URL(ref, 'r') )).result as summary
+      FROM \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.submissions_objects\`
+      WHERE uri LIKE ('%README%') LIMIT 1;"
+      
+    if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$TEST_SQL" &>/dev/null; then
+      log_warning "  BigQuery connection test query failed. This might be due to IAM propagation delay. Setup is likely still correct."
+    else
+      log_success "  BigQuery connection test query completed successfully!"
     fi
 
     log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
@@ -714,9 +839,9 @@ if [ "$RUN_BQ" = "true" ]; then
     for map in "${CSV_TABLE_MAP[@]}"; do
       csv_file="${map%%:*}"
       table_name="${map##*:}"
-      
+
       log_info "Checking table: $table_name in dataset $BQ_DATASET..."
-      
+
       if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.$table_name" &>/dev/null; then
         if [ -f "$csv_file" ]; then
           log_info "Ingesting and creating table '$table_name' from CSV '$csv_file'..."
@@ -818,7 +943,7 @@ if [ "$RUN_BUILD" = "true" ]; then
     for img in "${IMAGES_TO_CHECK[@]}"; do
       image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
       log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
-      
+
       # Use gcloud artifacts docker tags list and grep for the specific tag
       if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
         log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
@@ -904,14 +1029,14 @@ if [ "$RUN_K8S" = "true" ]; then
   }
 
   log_info "Configuring IAM permissions for Kubernetes Service Accounts via Workload Identity..."
-  
+
   # hackathon-judge-sa needs BigQuery reader/writer and Pub/Sub reader/writer permissions
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.dataEditor"
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.jobUser"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.publisher"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.subscriber"
   bind_workload_identity "hackathon-judge-sa" "roles/aiplatform.user"
-  
+
   # hackathon-judge-sandbox-sa needs Vertex AI user permissions for judging logic
   bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
 
