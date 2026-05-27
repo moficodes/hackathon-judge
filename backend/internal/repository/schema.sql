@@ -53,12 +53,6 @@ CREATE TABLE IF NOT EXISTS `projects` (
     score FLOAT64
 );
 
-SELECT "1" as projects_check  from `projects`;
--- Grant permissions for the connection resource
--- Forcing time to propagate - TODO: split scripts
-GRANT `roles/storage.objectViewer`
-ON PROJECT `<<YOUR PROJECT ID>>`
-TO "connection:<<REGION>>.connection-resource";
 
 -- Evaluations Table
 CREATE TABLE IF NOT EXISTS `evaluations` (
@@ -72,13 +66,6 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
     created_at TIMESTAMP
 );
 
-
-GRANT `roles/aiplatform.user`
-ON PROJECT `<<YOUR PROJECT ID>>`
-TO "connection:<<REGION>>.connection-resource";
-
--- Forcing a small pause 
-SELECT "1" as evaluations_check  from `evaluations`;
 
 -- -- Insert sample evaluation criteria with weights
 -- INSERT INTO `criteria` (name, prompt, weight)
@@ -96,11 +83,3 @@ OPTIONS (
   object_metadata = 'SIMPLE',
   uris = ['gs://<<YOUR PROJECT ID>>-stabby/*']
 );
-
-
--- Test the setup:
-SELECT ref.uri,
-AI.SCORE(prompt => ('Rate this project based on the documentation quality on a scale of 0 to 100. Good quality includes clarity, completeness, and organization. Also images and possibly videos', OBJ.GET_ACCESS_URL(ref, 'r'))),
-AI.GENERATE(prompt => ('Summarize this project', OBJ.GET_ACCESS_URL(ref, 'r') )).result as summary
-FROM `submissions_objects`
-WHERE uri LIKE ('%README%')
