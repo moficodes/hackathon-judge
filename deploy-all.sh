@@ -68,6 +68,12 @@ log_error() {
   echo -e "${RED}❌ ERROR: $1${NC}"
 }
 
+prefix_log() {
+  local prefix=$1
+  local color=$2
+  sed "s/^/${color}[${prefix}]${NC} /"
+}
+
 # ------------------------------------------------------------------------------
 # CLI Parameter & Mode Configuration
 # ------------------------------------------------------------------------------
@@ -141,7 +147,7 @@ log_header "GOOGLE CLOUD Infrastructure Provisioning, Build & K8s Deployment"
 # ------------------------------------------------------------------------------
 # Step 1: Environment Configuration & Validation
 # ------------------------------------------------------------------------------
-log_step "1/10" "Environment Configuration & Validation ⚙️"
+log_step "1/11" "Environment Configuration & Validation ⚙️"
 
 ENV_FILE=".env"
 ENV_EXAMPLE=".env.example"
@@ -392,7 +398,7 @@ echo "  Cluster: ${CLUSTER_NAME}"
 # ------------------------------------------------------------------------------
 # Step 2: Google Cloud CLI & Authentication Check
 # ------------------------------------------------------------------------------
-log_step "2/10" "Google Cloud CLI & Authentication Check 🔍"
+log_step "2/11" "Google Cloud CLI & Authentication Check 🔍"
 
 if ! command -v gcloud &> /dev/null; then
   log_error "gcloud CLI is not installed."
@@ -431,7 +437,7 @@ log_success "Google Cloud credentials are valid."
 # ------------------------------------------------------------------------------
 # Step 3: Configuring Target Project
 # ------------------------------------------------------------------------------
-log_step "3/10" "Configuring Target Project 🎯"
+log_step "3/11" "Configuring Target Project 🎯"
 
 log_info "Setting active project in gcloud config..."
 gcloud config set project "$GOOGLE_CLOUD_PROJECT"
@@ -448,7 +454,7 @@ log_success "Project '$GOOGLE_CLOUD_PROJECT' is accessible and set active."
 # Step 4: Enabling Google Cloud APIs
 # ------------------------------------------------------------------------------
 if [ "$RUN_APIS" = "true" ]; then
-  log_step "4/10" "Enabling Google Cloud APIs ⚡"
+  log_step "4/11" "Enabling Google Cloud APIs ⚡"
 
   APIS_TO_ENABLE=(
     "container.googleapis.com"            # Google Kubernetes Engine
@@ -480,7 +486,7 @@ fi
 # Step 5: Creating Artifact Registry Docker Repository
 # ------------------------------------------------------------------------------
 if [ "$RUN_REGISTRY" = "true" ]; then
-  log_step "5/10" "Creating Artifact Registry Docker Repository 📦"
+  log_step "5/11" "Creating Artifact Registry Docker Repository 📦"
 
   log_info "Checking Artifact Registry repository: $ARTIFACT_REPO_NAME in $ARTIFACT_REGISTRY_LOCATION..."
   if ! gcloud artifacts repositories describe "$ARTIFACT_REPO_NAME" --location="$ARTIFACT_REGISTRY_LOCATION" &> /dev/null; then
@@ -502,9 +508,63 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# PARALLEL EXECUTION: Steps 6, 7, and 8
+# Step 6: Storage Bucket & READMEs
 # ------------------------------------------------------------------------------
-log_step "6-8/10" "Parallel Execution: GKE, Pub/Sub, and BigQuery 🚀📨📊"
+if [ "$RUN_BQ" = "true" ]; then
+  log_step "6/11" "Storage Bucket & READMEs 🪣"
+  log_info "Ensuring stabby bucket exists and is populated..."
+  if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
+    log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
+    gcloud storage buckets create "gs://${GOOGLE_CLOUD_PROJECT}-stabby" --location="${GOOGLE_CLOUD_REGION}"
+    log_success "Bucket created!"
+  else
+    log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
+  fi
+
+  # Fetch READMEs from GitHub using projects.csv as a manifest.
+  log_info "Fetching READMEs from GitHub..."
+  mkdir -p readmes
+  rm -f readmes/*
+  
+  if [ -f "projects.csv" ]; then
+    # Skip header and read pipe-separated file
+    tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
+      if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
+        # Extract owner and repo from URL
+        repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
+        
+        if [ -n "$repo_path" ]; then
+          raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
+          log_info "  Downloading README for $name..."
+          if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url"; then
+            # Try master branch if main fails
+            raw_url_master="https://raw.githubusercontent.com/$repo_path/master/README.md"
+            if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url_master"; then
+               log_warning "  Failed to download README for $name from main or master."
+            fi
+          fi
+        fi
+      fi
+    done
+  else
+    log_warning "projects.csv not found, cannot fetch READMEs."
+  fi
+
+  if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
+    log_info "Uploading READMEs to stabby bucket..."
+    gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
+    log_success "READMEs uploaded!"
+  else
+    log_warning "No readmes directory found or directory is empty. Skipping upload."
+  fi
+else
+  log_info "Skipping Step 6: Storage Bucket & READMEs (Bypassed by CLI flag)."
+fi
+
+# ------------------------------------------------------------------------------
+# PARALLEL EXECUTION: Steps 7, 8, and 9
+# ------------------------------------------------------------------------------
+log_step "7-9/11" "Parallel Execution: GKE, Pub/Sub, and BigQuery 🚀📨📊"
 log_info "Running GKE cluster creation, Pub/Sub configuration, and BigQuery configuration in parallel..."
 
 PIDS=()
@@ -515,106 +575,128 @@ if [ "$RUN_GKE" = "true" ]; then
   (
     log_info "Starting GKE Autopilot cluster configuration..."
 
-  log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
-  if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
-    log_warning "GKE Autopilot Cluster does not exist. Initiating creation..."
-    log_info "NOTE: GKE Autopilot cluster creation usually takes 5 to 10 minutes. Please be patient."
+    log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
+    if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
+      log_warning "GKE Autopilot Cluster does not exist. Initiating creation..."
+      log_info "NOTE: GKE Autopilot cluster creation usually takes 5 to 10 minutes. Please be patient."
 
-    if gcloud container clusters create-auto "$CLUSTER_NAME" \
-        --region="$GOOGLE_CLOUD_REGION" \
-        --project="$GOOGLE_CLOUD_PROJECT"; then
-      log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully created!"
+      if gcloud container clusters create-auto "$CLUSTER_NAME" \
+          --region="$GOOGLE_CLOUD_REGION" \
+          --project="$GOOGLE_CLOUD_PROJECT"; then
+        log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully created!"
+      else
+        log_error "Failed to create GKE cluster. Please check your quota settings or regional resources."
+        exit 1
+      fi
     else
-      log_error "Failed to create GKE cluster. Please check your quota settings or regional resources."
-      exit 1
+      log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
     fi
-  else
-    log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
-  fi
-  ) &
+  ) 2>&1 | prefix_log "GKE" "${BLUE}" &
   PIDS+=($!)
   RESULTS+=("GKE")
 else
-  log_info "Skipping Step 6: GKE Autopilot cluster configuration (Bypassed by CLI flag)."
+  log_info "Skipping Step 7: GKE Autopilot cluster configuration (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------
-# Step 7: Configuring Pub/Sub Topics & Subscriptions
+# Step 8: Configuring Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
 if [ "$RUN_PUBSUB" = "true" ]; then
   (
     log_info "Starting Pub/Sub Topics & Subscriptions configuration..."
 
-  # Robust function to create topic
-  ensure_pubsub_topic() {
-    local topic=$1
-    log_info "Checking topic: $topic"
-    if ! gcloud pubsub topics describe "$topic" &> /dev/null; then
-      log_info "Creating Pub/Sub topic: $topic"
-      gcloud pubsub topics create "$topic"
-      log_success "Topic '$topic' created!"
-    else
-      log_success "Topic '$topic' already exists."
-    fi
-  }
+    # Robust function to create topic
+    ensure_pubsub_topic() {
+      local topic=$1
+      log_info "Checking topic: $topic"
+      if ! gcloud pubsub topics describe "$topic" &> /dev/null; then
+        log_info "Creating Pub/Sub topic: $topic"
+        gcloud pubsub topics create "$topic"
+        log_success "Topic '$topic' created!"
+      else
+        log_success "Topic '$topic' already exists."
+      fi
+    }
 
-  # Robust function to create subscription bound to topic
-  ensure_pubsub_sub() {
-    local sub=$1
-    local topic=$2
-    log_info "Checking subscription: $sub"
-    if ! gcloud pubsub subscriptions describe "$sub" &> /dev/null; then
-      log_info "Creating Pub/Sub subscription '$sub' for topic '$topic'..."
-      gcloud pubsub subscriptions create "$sub" --topic="$topic"
-      log_success "Subscription '$sub' created!"
-    else
-      log_success "Subscription '$sub' already exists."
-    fi
-  }
+    # Robust function to create subscription bound to topic
+    ensure_pubsub_sub() {
+      local sub=$1
+      local topic=$2
+      log_info "Checking subscription: $sub"
+      if ! gcloud pubsub subscriptions describe "$sub" &> /dev/null; then
+        log_info "Creating Pub/Sub subscription '$sub' for topic '$topic'..."
+        gcloud pubsub subscriptions create "$sub" --topic="$topic"
+        log_success "Subscription '$sub' created!"
+      else
+        log_success "Subscription '$sub' already exists."
+      fi
+    }
 
-  # Configure topics
-  ensure_pubsub_topic "$TASKS_TOPIC"
-  ensure_pubsub_topic "$RESULTS_TOPIC"
+    # Configure topics
+    ensure_pubsub_topic "$TASKS_TOPIC"
+    ensure_pubsub_topic "$RESULTS_TOPIC"
 
-  # Configure subscriptions
-  ensure_pubsub_sub "$TASKS_SUBSCRIPTION" "$TASKS_TOPIC"
-  ensure_pubsub_sub "$RESULTS_SUB" "$RESULTS_TOPIC"
-  ) &
+    # Configure subscriptions
+    ensure_pubsub_sub "$TASKS_SUBSCRIPTION" "$TASKS_TOPIC"
+    ensure_pubsub_sub "$RESULTS_SUB" "$RESULTS_TOPIC"
+  ) 2>&1 | prefix_log "PubSub" "${PURPLE}" &
   PIDS+=($!)
   RESULTS+=("PubSub")
 else
-  log_info "Skipping Step 7: Pub/Sub topics and subscriptions configuration (Bypassed by CLI flag)."
+  log_info "Skipping Step 8: Pub/Sub topics and subscriptions configuration (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------
-# Step 8: Configuring BigQuery Datasets & Tables
+# Step 9: Configuring BigQuery Datasets & Tables
 # ------------------------------------------------------------------------------
 if [ "$RUN_BQ" = "true" ]; then
   (
-    log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
+    log_info "Starting BigQuery Datasets & Tables configuration..."
     # Workaround for bq error SystemError: buffer overflow
     export COLUMNS=80
     export LINES=24
 
 
-  log_info "Checking BigQuery dataset: $BQ_DATASET..."
-  DATASET_CREATED=false
-  if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
-    DATASET_CREATED=true
-    log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
-    if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
-        --location="$GOOGLE_CLOUD_REGION" \
-        --dataset "$GOOGLE_CLOUD_PROJECT:$BQ_DATASET"; then
-      log_success "Dataset '$BQ_DATASET' successfully created!"
+    log_info "Checking BigQuery dataset: $BQ_DATASET..."
+    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
+      log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
+      if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
+          --location="$GOOGLE_CLOUD_REGION" \
+          --dataset "$GOOGLE_CLOUD_PROJECT:$BQ_DATASET"; then
+        log_success "Dataset '$BQ_DATASET' successfully created!"
+      else
+        log_error "Failed to create BigQuery dataset."
+        exit 1
+      fi
     else
-      log_error "Failed to create BigQuery dataset."
+      log_success "BigQuery dataset '$BQ_DATASET' already exists."
+    fi
+
+    log_info "Ensuring BigQuery Connection exists..."
+    # Create connection if it doesn't exist
+    if ! bq show --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" &>/dev/null; then
+      log_info "Creating BigQuery connection..."
+      bq mk --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        --connection_type=CLOUD_RESOURCE "${GOOGLE_CLOUD_REGION}.connection-resource"
+    fi
+
+    log_info "Waiting for BigQuery Connection Service Account to propagate..."
+    CONNECTION_SA=""
+    for i in {1..10}; do
+      CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" 2>/dev/null | jq -r '.cloudResource.serviceAccountId' 2>/dev/null || echo "")
+      if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
+        log_info "  Found Connection Service Account: $CONNECTION_SA"
+        break
+      fi
+      log_info "  Waiting for connection service account... (attempt $i/10)"
+      sleep 3
+    done
+
+    if [ -z "$CONNECTION_SA" ] || [ "$CONNECTION_SA" = "null" ]; then
+      log_error "Failed to retrieve BigQuery Connection Service Account after multiple attempts."
       exit 1
     fi
-  else
-    log_success "BigQuery dataset '$BQ_DATASET' already exists."
-  fi
 
-  if true; then
     log_info "Ensuring stabby bucket exists and is populated..."
     if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
       log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
@@ -625,7 +707,7 @@ if [ "$RUN_BQ" = "true" ]; then
     fi
 
     # Fetch READMEs from GitHub using projects.csv as a manifest.
-    # Note: BigQuery data for projects is managed by seeds.sql; 
+    # Note: BigQuery data for projects is managed by seeds.sql;
     # projects.csv is used here only for README discovery.
     log_info "Fetching READMEs from GitHub..."
     mkdir -p readmes
@@ -663,165 +745,34 @@ if [ "$RUN_BQ" = "true" ]; then
       log_warning "No readmes directory found or directory is empty. Skipping upload."
     fi
 
-    log_info "Configuring BigQuery resources individually..."
+    log_info "Granting IAM roles to connection service account..."
+    log_info "  Granting roles/aiplatform.user..."
+    gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+      --member="serviceAccount:$CONNECTION_SA" \
+      --role="roles/aiplatform.user" \
+      --condition=None >/dev/null 2>&1
 
-    # 1. Connection Creation & Check
-    log_info "Checking BigQuery connection: ${GOOGLE_CLOUD_REGION}.connection-resource..."
-    if ! bq show --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" &>/dev/null; then
-      log_info "  Connection does not exist. Creating BigQuery connection..."
-      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-        "CREATE CONNECTION \`${GOOGLE_CLOUD_REGION}.connection-resource\` OPTIONS (connection_type = 'CLOUD_RESOURCE');" &>/dev/null; then
-        log_error "  Failed to create BigQuery connection."
-        exit 1
-      fi
-      log_success "  BigQuery connection created successfully!"
-    else
-      log_success "  BigQuery connection already exists."
-    fi
+    log_info "  Granting roles/storage.objectViewer..."
+    gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+      --member="serviceAccount:$CONNECTION_SA" \
+      --role="roles/storage.objectViewer" \
+      --condition=None >/dev/null 2>&1
 
-    # 2. Table hackathons Check & Creation
-    log_info "Checking table: hackathons..."
-    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.hackathons" &>/dev/null; then
-      log_info "  Table hackathons does not exist. Creating..."
-      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-        "CREATE TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.hackathons\` (
-            id STRING,
-            title STRING,
-            date TIMESTAMP,
-            description STRING,
-            goal STRING,
-            status STRING,
-            criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
-            bonus_criteria ARRAY<STRUCT<id STRING, name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>
-        );" &>/dev/null; then
-        log_error "  Failed to create hackathons table."
-        exit 1
-      fi
-      log_success "  Table hackathons created successfully!"
-    else
-      log_success "  Table hackathons already exists."
-    fi
+    log_success "Roles granted to connection service account!"
 
-    # 3. Table projects Check & Creation
-    log_info "Checking table: projects..."
-    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.projects" &>/dev/null; then
-      log_info "  Table projects does not exist. Creating..."
-      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-        "CREATE TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.projects\` (
-            id STRING,
-            name STRING,
-            title STRING,
-            url STRING,
-            readme_ref STRUCT< uri STRING, version STRING, authorizer STRING, details JSON>,
-            github_url STRING,
-            team_name STRING,
-            document STRING,
-            processing_date TIMESTAMP,
-            hackathon_id STRING,
-            score FLOAT64
-        );" &>/dev/null; then
-        log_error "  Failed to create projects table."
-        exit 1
-      fi
-      log_success "  Table projects created successfully!"
-    else
-      log_success "  Table projects already exists."
-    fi
+    # Small extra buffer for IAM propagation
+    log_info "Allowing IAM propagation (5s)..."
+    sleep 5
 
-    # 4. Table evaluations Check & Creation
-    log_info "Checking table: evaluations..."
-    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.evaluations" &>/dev/null; then
-      log_info "  Table evaluations does not exist. Creating..."
-      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-        "CREATE TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.evaluations\` (
-            id STRING,
-            project_id STRING,
-            judge_id STRING,
-            status STRING,
-            criteria_json ARRAY<STRUCT<name STRING, description STRING, weight FLOAT64, score FLOAT64, max_score FLOAT64>>,
-            total_score FLOAT64,
-            comment STRING,
-            created_at TIMESTAMP
-        );" &>/dev/null; then
-        log_error "  Failed to create evaluations table."
-        exit 1
-      fi
-      log_success "  Table evaluations created successfully!"
+    log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
+    if [ -f "backend/internal/repository/schema.sql" ]; then
+      sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
+          -e "s/<<REGION>>/${GOOGLE_CLOUD_REGION}/g" \
+          -e "s/hackathon_judge/${BQ_DATASET}/g" \
+          backend/internal/repository/schema.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"
+      log_success "schema.sql successfully applied!"
     else
-      log_success "  Table evaluations already exists."
-    fi
-
-    # 5. DDL Grants
-    log_info "Granting roles to connection via BQ DDL..."
-    if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-      "GRANT \`roles/storage.objectViewer\` ON PROJECT \`${GOOGLE_CLOUD_PROJECT}\` TO \"connection:${GOOGLE_CLOUD_REGION}.connection-resource\";" &>/dev/null; then
-      log_warning "  Failed to grant storage.objectViewer role via DDL. Will rely on gcloud fallback."
-    else
-      log_success "  Granted storage.objectViewer role via DDL."
-    fi
-
-    if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-      "GRANT \`roles/aiplatform.user\` ON PROJECT \`${GOOGLE_CLOUD_PROJECT}\` TO \"connection:${GOOGLE_CLOUD_REGION}.connection-resource\";" &>/dev/null; then
-      log_warning "  Failed to grant aiplatform.user role via DDL. Will rely on gcloud fallback."
-    else
-      log_success "  Granted aiplatform.user role via DDL."
-    fi
-
-    # 6. External Table submissions_objects Check & Creation
-    log_info "Checking external table: submissions_objects..."
-    if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.submissions_objects" &>/dev/null; then
-      log_info "  External table submissions_objects does not exist. Creating..."
-      if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-        "CREATE EXTERNAL TABLE \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.submissions_objects\`
-        WITH CONNECTION \`${GOOGLE_CLOUD_REGION}.connection-resource\`
-        OPTIONS (
-          object_metadata = 'SIMPLE',
-          uris = ['gs://${GOOGLE_CLOUD_PROJECT}-stabby/*']
-        );" &>/dev/null; then
-        log_error "  Failed to create submissions_objects external table."
-        exit 1
-      fi
-      log_success "  External table submissions_objects created successfully!"
-    else
-      log_success "  External table submissions_objects already exists."
-    fi
-
-    # 7. gcloud IAM Grants Fallback
-    log_info "Granting required roles to the BigQuery connection service account via gcloud..."
-    CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" | jq -r '.cloudResource.serviceAccountId' 2>/dev/null || true)
-    
-    if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
-      log_info "  Found Connection Service Account: $CONNECTION_SA"
-      
-      log_info "  Granting roles/aiplatform.user..."
-      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-        --member="serviceAccount:$CONNECTION_SA" \
-        --role="roles/aiplatform.user" \
-        --condition=None >/dev/null 2>&1 || log_warning "  Failed to grant roles/aiplatform.user via gcloud."
-        
-      log_info "  Granting roles/storage.objectViewer..."
-      gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-        --member="serviceAccount:$CONNECTION_SA" \
-        --role="roles/storage.objectViewer" \
-        --condition=None >/dev/null 2>&1 || log_warning "  Failed to grant roles/storage.objectViewer via gcloud."
-        
-      log_success "  gcloud IAM grants completed."
-    else
-      log_warning "  Could not find service account for BigQuery connection to apply gcloud fallback. DDL grants might be sufficient."
-    fi
-
-    # 8. Test Connection Query (Best effort)
-    log_info "Running BigQuery connection test query..."
-    TEST_SQL="SELECT ref.uri,
-      AI.SCORE(prompt => ('Rate this project based on the documentation quality on a scale of 0 to 100. Good quality includes clarity, completeness, and organization. Also images and possibly videos', OBJ.GET_ACCESS_URL(ref, 'r'))),
-      AI.GENERATE(prompt => ('Summarize this project', OBJ.GET_ACCESS_URL(ref, 'r') )).result as summary
-      FROM \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.submissions_objects\`
-      WHERE uri LIKE ('%README%') LIMIT 1;"
-      
-    if ! bq query --use_legacy_sql=false --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$TEST_SQL" &>/dev/null; then
-      log_warning "  BigQuery connection test query failed. This might be due to IAM propagation delay. Setup is likely still correct."
-    else
-      log_success "  BigQuery connection test query completed successfully!"
+      log_warning "schema.sql not found. Skipping schema setup."
     fi
 
     log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
@@ -831,14 +782,11 @@ if [ "$RUN_BQ" = "true" ]; then
     else
       log_warning "seeds.sql not found. Skipping seed ingestion."
     fi
-
-    # CSV loading removed in favor of idempotent seeds.sql
-  fi
-  ) &
+  ) 2>&1 | prefix_log "BigQuery" "${CYAN}" &
   PIDS+=($!)
   RESULTS+=("BigQuery")
 else
-  log_info "Skipping Step 8: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
+  log_info "Skipping Step 9: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
 fi
 
 
@@ -861,10 +809,10 @@ if [ "$FAILURES" -gt 0 ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# Step 9: Triggering Service Builds with Cloud Build
+# Step 10: Triggering Service Builds with Cloud Build
 # ------------------------------------------------------------------------------
 if [ "$RUN_BUILD" = "true" ]; then
-  log_step "9/10" "Triggering Service Builds with Cloud Build 🛠️"
+  log_step "10/11" "Triggering Service Builds with Cloud Build 🛠️"
 
   # Detect Git status and determine target tag
   COMMIT_SHA="latest"
@@ -928,14 +876,14 @@ if [ "$RUN_BUILD" = "true" ]; then
     fi
   fi
 else
-  log_info "Skipping Step 9: Cloud Build container packaging (Bypassed by CLI flag)."
+  log_info "Skipping Step 10: Cloud Build container packaging (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------
-# Step 10: Kubernetes Deployment
+# Step 11: Kubernetes Deployment
 # ------------------------------------------------------------------------------
 if [ "$RUN_K8S" = "true" ]; then
-  log_step "10/10" "Kubernetes Deployment ☸️"
+  log_step "11/11" "Kubernetes Deployment ☸️"
 
   log_info "Getting credentials for GKE cluster: $CLUSTER_NAME..."
   if ! gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$GOOGLE_CLOUD_REGION"; then
@@ -1004,25 +952,86 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Applying Sandbox Router..."
   kubectl apply -f k8s/sandbox_router.yaml
 
+  log_info "Applying Sandbox Gateway..."
+  kubectl apply -f k8s/sandbox-gateway.yaml
+
   log_info "Waiting for Sandbox Router deployment to be ready..."
   if ! kubectl rollout status deployment/sandbox-router-deployment -n hackathon-judge --timeout=300s; then
     log_error "Sandbox Router deployment failed to reach ready state within 5 minutes."
     exit 1
   fi
 
+  log_info "Applying Sandbox Infrastructure (Claim Template, Warmpool, Gemini Sandbox)..."
+  envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
+  kubectl apply -f k8s/sandbox-warmpool.yaml
+  envsubst < k8s/agent-sandbox.yaml | kubectl apply -f -
+
+  log_info "Applying Application Gateway..."
+  kubectl apply -f k8s/gateway.yaml
+
+  log_info "Applying Application Services (Backend, Frontend, Agent)..."
+  envsubst < k8s/backend.yaml | kubectl apply -f -
+  envsubst < k8s/frontend.yaml | kubectl apply -f -
+  envsubst < k8s/agent.yaml | kubectl apply -f -
+
+  log_info "Waiting for Application rollouts..."
+  kubectl rollout status deployment/backend -n hackathon-judge --timeout=300s
+  kubectl rollout status deployment/frontend -n hackathon-judge --timeout=300s
+  kubectl rollout status deployment/agent -n hackathon-judge --timeout=300s
+
+  log_info "Waiting for Gateways to be fully ready (Programmed & IP assigned)..."
+  
+  wait_for_gateway_ip() {
+    local gateway_name=$1
+    local namespace=$2
+    local ip=""
+    local retries=0
+    
+    # Wait for Programmed condition first
+    kubectl wait --for=condition=programmed=true gateway/"$gateway_name" -n "$namespace" --timeout=600s >/dev/null 2>&1 || true
+    
+    # Poll for address
+    while [ -z "$ip" ] && [ $retries -lt 40 ]; do
+      ip=$(kubectl get gateway "$gateway_name" -n "$namespace" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+      if [ -z "$ip" ]; then
+        sleep 10
+        retries=$((retries + 1))
+      fi
+    done
+    echo "$ip"
+  }
+
+  APP_IP=$(wait_for_gateway_ip "hackathon-judge-gateway" "hackathon-judge")
+  SANDBOX_IP=$(wait_for_gateway_ip "sandbox-router-gateway" "hackathon-judge")
+
   log_success "Kubernetes resources applied and verified!"
 else
-  log_info "Skipping Step 10: Kubernetes deployment (Bypassed by CLI flag)."
+  log_info "Skipping Step 11: Kubernetes deployment (Bypassed by CLI flag)."
+  APP_IP="<Skipped>"
+  SANDBOX_IP="<Skipped>"
 fi
 
 # ------------------------------------------------------------------------------
 # Provisioning Complete!
 # ------------------------------------------------------------------------------
-log_header "Infrastructure Setup & Build Complete! 🎉"
-log_success "All services built and docker images stored in Artifact Registry."
+log_header "Infrastructure Setup, Build & Application Deployment Complete! 🎉"
+log_success "All services built, docker images stored in Artifact Registry, and application deployed to GKE."
 log_info "To view your Artifact Registry repository, visit:"
 echo "  https://console.cloud.google.com/artifacts/docker/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REGISTRY_LOCATION}/${ARTIFACT_REPO_NAME}"
 log_info "To view your GKE Autopilot cluster, visit:"
 echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOGLE_CLOUD_PROJECT}"
-log_info "The Sandbox Router is deployed and available at: sandbox-router-svc.hackathon-judge.svc.cluster.local"
+
+echo -e "\n${BOLD}Access URLs:${NC}"
+if [ "$APP_IP" != "<Skipped>" ] && [ -n "$APP_IP" ]; then
+  echo -e "  ${GREEN}Hackathon Judge App:${NC} http://${APP_IP}"
+else
+  echo -e "  ${YELLOW}Hackathon Judge App:${NC} Pending (Check 'kubectl get gateway hackathon-judge-gateway -n hackathon-judge')"
+fi
+
+if [ "$SANDBOX_IP" != "<Skipped>" ] && [ -n "$SANDBOX_IP" ]; then
+  echo -e "  ${GREEN}Sandbox Router:${NC}      http://${SANDBOX_IP}"
+else
+  echo -e "  ${YELLOW}Sandbox Router:${NC}      Pending (Check 'kubectl get gateway sandbox-router-gateway -n hackathon-judge')"
+fi
+
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"

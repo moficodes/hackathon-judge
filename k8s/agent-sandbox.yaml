@@ -38,7 +38,7 @@ spec:
               cpu: "2000m"
           env:
           - name: GOOGLE_CLOUD_PROJECT
-            value: $GOOGLE_CLOUD_PROJECT
+            value: "${GOOGLE_CLOUD_PROJECT}"
           - name: GOOGLE_CLOUD_LOCATION
             value: "global"
           - name: GOOGLE_GENAI_USE_VERTEXAI
