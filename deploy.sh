@@ -623,6 +623,9 @@ if [ "$RUN_BQ" = "true" ]; then
       log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
     fi
 
+    # Fetch READMEs from GitHub using projects.csv as a manifest.
+    # Note: BigQuery data for projects is managed by seeds.sql; 
+    # projects.csv is used here only for README discovery.
     log_info "Fetching READMEs from GitHub..."
     mkdir -p readmes
     rm -f readmes/*
@@ -828,54 +831,7 @@ if [ "$RUN_BQ" = "true" ]; then
       log_warning "seeds.sql not found. Skipping seed ingestion."
     fi
 
-    # Map CSV files to their BigQuery tables
-    CSV_TABLE_MAP=(
-      "hackathons.csv:hackathons"
-      "projects.csv:projects"
-      "evaluations.csv:evaluations"
-    )
-
-    for map in "${CSV_TABLE_MAP[@]}"; do
-      csv_file="${map%%:*}"
-      table_name="${map##*:}"
-
-      log_info "Checking table: $table_name in dataset $BQ_DATASET..."
-
-      if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET.$table_name" &>/dev/null; then
-        if [ -f "$csv_file" ]; then
-          log_info "Ingesting and creating table '$table_name' from CSV '$csv_file'..."
-          # Run bq load dynamically detecting schema with autodetect, using pipe | separator
-          if bq --project_id="$GOOGLE_CLOUD_PROJECT" load \
-              --location="$GOOGLE_CLOUD_REGION" \
-              --source_format=CSV \
-              --field_delimiter="|" \
-              --autodetect \
-              "$BQ_DATASET.$table_name" \
-              "$csv_file"; then
-            log_success "Table '$table_name' successfully created and populated!"
-          else
-            log_error "Failed to load CSV data into table '$table_name'."
-            exit 1
-          fi
-        else
-          log_warning "CSV file '$csv_file' not found at root. Skipping table '$table_name' load."
-        fi
-      else
-        log_success "Table '$table_name' already exists. Skipping ingestion."
-      fi
-    done
-
-    # Check that data exists in the tables
-    for map in "${CSV_TABLE_MAP[@]}"; do
-      table_name="${map##*:}"
-      log_info "Verifying table data: $table_name..."
-      ROW_COUNT=$(bq query --project_id="$GOOGLE_CLOUD_PROJECT" --use_legacy_sql=false --format=csv "SELECT COUNT(*) FROM \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.${table_name}\`" | tail -n 1)
-      if [ "$ROW_COUNT" = "0" ]; then
-        log_warning "Table \`$table_name\` is empty. You may need to run this step again or manually load the data."
-      else
-        log_success "Table \`$table_name\` has $ROW_COUNT rows."
-      fi
-    done
+    # CSV loading removed in favor of idempotent seeds.sql
   fi
   ) &
   PIDS+=($!)
