@@ -501,10 +501,18 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 6: Creating GKE Autopilot Cluster
+# PARALLEL EXECUTION: Steps 6, 7, and 8
 # ------------------------------------------------------------------------------
+log_step "6-8/10" "Parallel Execution: GKE, Pub/Sub, and BigQuery 🚀📨📊"
+log_info "Running GKE cluster creation, Pub/Sub configuration, and BigQuery configuration in parallel..."
+
+PIDS=()
+RESULTS=()
+
+
 if [ "$RUN_GKE" = "true" ]; then
-  log_step "6/10" "Creating GKE Autopilot Cluster 🚀"
+  (
+    log_info "Starting GKE Autopilot cluster configuration..."
 
   log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
   if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
@@ -522,6 +530,9 @@ if [ "$RUN_GKE" = "true" ]; then
   else
     log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
   fi
+  ) &
+  PIDS+=($!)
+  RESULTS+=("GKE")
 else
   log_info "Skipping Step 6: GKE Autopilot cluster configuration (Bypassed by CLI flag)."
 fi
@@ -530,7 +541,8 @@ fi
 # Step 7: Configuring Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
 if [ "$RUN_PUBSUB" = "true" ]; then
-  log_step "7/10" "Configuring Pub/Sub Topics & Subscriptions 📨"
+  (
+    log_info "Starting Pub/Sub Topics & Subscriptions configuration..."
 
   # Robust function to create topic
   ensure_pubsub_topic() {
@@ -566,6 +578,9 @@ if [ "$RUN_PUBSUB" = "true" ]; then
   # Configure subscriptions
   ensure_pubsub_sub "$TASKS_SUBSCRIPTION" "$TASKS_TOPIC"
   ensure_pubsub_sub "$RESULTS_SUB" "$RESULTS_TOPIC"
+  ) &
+  PIDS+=($!)
+  RESULTS+=("PubSub")
 else
   log_info "Skipping Step 7: Pub/Sub topics and subscriptions configuration (Bypassed by CLI flag)."
 fi
@@ -574,10 +589,11 @@ fi
 # Step 8: Configuring BigQuery Datasets & Tables
 # ------------------------------------------------------------------------------
 if [ "$RUN_BQ" = "true" ]; then
-  log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
-  # Workaround for bq error SystemError: buffer overflow
-  export COLUMNS=80
-  export LINES=24
+  (
+    log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
+    # Workaround for bq error SystemError: buffer overflow
+    export COLUMNS=80
+    export LINES=24
 
 
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
@@ -736,8 +752,30 @@ if [ "$RUN_BQ" = "true" ]; then
       fi
     done
   fi
+  ) &
+  PIDS+=($!)
+  RESULTS+=("BigQuery")
 else
   log_info "Skipping Step 8: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
+fi
+
+
+# Wait for all parallel jobs to complete
+FAILURES=0
+for i in "${!PIDS[@]}"; do
+  wait "${PIDS[$i]}"
+  STATUS=$?
+  if [ $STATUS -eq 0 ]; then
+    log_success "${RESULTS[$i]} configuration completed successfully."
+  else
+    log_error "${RESULTS[$i]} configuration failed."
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+
+if [ "$FAILURES" -gt 0 ]; then
+  log_error "One or more parallel steps failed. Aborting deployment."
+  exit 1
 fi
 
 # ------------------------------------------------------------------------------
