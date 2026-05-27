@@ -36,3 +36,6 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore:Inheritance class AiohttpClientSession from ClientSession is discouraged:DeprecationWarning:google.genai._api_client",
+]
