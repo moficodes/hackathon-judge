@@ -277,7 +277,10 @@ else
   if is_val_complete "$existing_GOOGLE_CLOUD_REGION"; then
     GOOGLE_CLOUD_REGION="$existing_GOOGLE_CLOUD_REGION"
   else
-    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-us-central1}"
+    # Randomly select a default region from a predefined list of supported regions
+    REGIONS=("us-central1" "us-east1" "us-west1" "us-south1")
+    RANDOM_REGION=${REGIONS[$RANDOM % ${#REGIONS[@]}]}
+    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-$RANDOM_REGION}"
   fi
 
   # Registry Location
@@ -449,6 +452,7 @@ if [ "$RUN_APIS" = "true" ]; then
 
   APIS_TO_ENABLE=(
     "container.googleapis.com"            # Google Kubernetes Engine
+    "generativelanguage.googleapis.com"   # Gemini API
     "artifactregistry.googleapis.com"     # Artifact Registry
     "cloudbuild.googleapis.com"           # Cloud Build
     "pubsub.googleapis.com"               # Cloud Pub/Sub
@@ -587,13 +591,16 @@ fi
 # ------------------------------------------------------------------------------
 if [ "$RUN_BQ" = "true" ]; then
   (
-    log_info "Starting BigQuery Datasets & Tables configuration..."
+    log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
+    # Workaround for bq error SystemError: buffer overflow
+    export COLUMNS=80
+    export LINES=24
 
 
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
-  DATASET_EXISTS=true
+  DATASET_CREATED=false
   if ! bq show --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "$BQ_DATASET" &>/dev/null; then
-    DATASET_EXISTS=false
+    DATASET_CREATED=true
     log_info "Creating BigQuery dataset '$BQ_DATASET' in location: $GOOGLE_CLOUD_REGION..."
     if bq --project_id="$GOOGLE_CLOUD_PROJECT" mk \
         --location="$GOOGLE_CLOUD_REGION" \
@@ -607,7 +614,7 @@ if [ "$RUN_BQ" = "true" ]; then
     log_success "BigQuery dataset '$BQ_DATASET' already exists."
   fi
 
-  if [ "$DATASET_EXISTS" = "false" ]; then
+  if true; then
     log_info "Ensuring stabby bucket exists and is populated..."
     if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
       log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
@@ -733,8 +740,18 @@ if [ "$RUN_BQ" = "true" ]; then
         log_success "Table '$table_name' already exists. Skipping ingestion."
       fi
     done
-  else
-    log_info "Skipping initial data ingestion as BigQuery dataset '$BQ_DATASET' already exists to prevent duplication."
+
+    # Check that data exists in the tables
+    for map in "${CSV_TABLE_MAP[@]}"; do
+      table_name="${map##*:}"
+      log_info "Verifying table data: $table_name..."
+      ROW_COUNT=$(bq query --project_id="$GOOGLE_CLOUD_PROJECT" --use_legacy_sql=false --format=csv "SELECT COUNT(*) FROM \`${GOOGLE_CLOUD_PROJECT}.${BQ_DATASET}.${table_name}\`" | tail -n 1)
+      if [ "$ROW_COUNT" = "0" ]; then
+        log_warning "Table \`$table_name\` is empty. You may need to run this step again or manually load the data."
+      else
+        log_success "Table \`$table_name\` has $ROW_COUNT rows."
+      fi
+    done
   fi
   ) &
   PIDS+=($!)
@@ -820,7 +837,7 @@ if [ "$RUN_BUILD" = "true" ]; then
     log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
   else
     log_info "Triggering Google Cloud Build to compile and package all services..."
-    if gcloud builds submit --config cloudbuild.yaml . \
+    if gcloud builds submit --region="$GOOGLE_CLOUD_REGION" --config cloudbuild.yaml . \
         --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
       log_success "Cloud Build completed successfully! All containers pushed to registry."
     else
