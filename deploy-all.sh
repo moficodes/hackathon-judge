@@ -277,7 +277,10 @@ else
   if is_val_complete "$existing_GOOGLE_CLOUD_REGION"; then
     GOOGLE_CLOUD_REGION="$existing_GOOGLE_CLOUD_REGION"
   else
-    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-us-central1}"
+    # Randomly select a default region from a predefined list of supported regions
+    REGIONS=("us-central1" "us-east1" "us-west1" "us-south1")
+    RANDOM_REGION=${REGIONS[$RANDOM % ${#REGIONS[@]}]}
+    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-$RANDOM_REGION}"
   fi
 
   # Registry Location
@@ -783,7 +786,7 @@ if [ "$RUN_BUILD" = "true" ]; then
     log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
   else
     log_info "Triggering Google Cloud Build to compile and package all services..."
-    if gcloud builds submit --config cloudbuild.yaml . \
+    if gcloud builds submit --region="$GOOGLE_CLOUD_REGION" --config cloudbuild.yaml . \
         --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
       log_success "Cloud Build completed successfully! All containers pushed to registry."
     else

@@ -277,7 +277,10 @@ else
   if is_val_complete "$existing_GOOGLE_CLOUD_REGION"; then
     GOOGLE_CLOUD_REGION="$existing_GOOGLE_CLOUD_REGION"
   else
-    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-us-central1}"
+    # Randomly select a default region from a predefined list of supported regions
+    REGIONS=("us-central1" "us-east1" "us-west1" "us-south1")
+    RANDOM_REGION=${REGIONS[$RANDOM % ${#REGIONS[@]}]}
+    prompt_var "GOOGLE_CLOUD_REGION" "GCP Target Region" "${existing_GOOGLE_CLOUD_REGION:-$RANDOM_REGION}"
   fi
 
   # Registry Location
