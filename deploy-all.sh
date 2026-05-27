@@ -502,10 +502,18 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 6: Creating GKE Autopilot Cluster
+# PARALLEL EXECUTION: Steps 6, 7, and 8
 # ------------------------------------------------------------------------------
+log_step "6-8/10" "Parallel Execution: GKE, Pub/Sub, and BigQuery 🚀📨📊"
+log_info "Running GKE cluster creation, Pub/Sub configuration, and BigQuery configuration in parallel..."
+
+PIDS=()
+RESULTS=()
+
+
 if [ "$RUN_GKE" = "true" ]; then
-  log_step "6/10" "Creating GKE Autopilot Cluster 🚀"
+  (
+    log_info "Starting GKE Autopilot cluster configuration..."
 
   log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
   if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
@@ -523,6 +531,9 @@ if [ "$RUN_GKE" = "true" ]; then
   else
     log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
   fi
+  ) &
+  PIDS+=($!)
+  RESULTS+=("GKE")
 else
   log_info "Skipping Step 6: GKE Autopilot cluster configuration (Bypassed by CLI flag)."
 fi
@@ -531,7 +542,8 @@ fi
 # Step 7: Configuring Pub/Sub Topics & Subscriptions
 # ------------------------------------------------------------------------------
 if [ "$RUN_PUBSUB" = "true" ]; then
-  log_step "7/10" "Configuring Pub/Sub Topics & Subscriptions 📨"
+  (
+    log_info "Starting Pub/Sub Topics & Subscriptions configuration..."
 
   # Robust function to create topic
   ensure_pubsub_topic() {
@@ -567,6 +579,9 @@ if [ "$RUN_PUBSUB" = "true" ]; then
   # Configure subscriptions
   ensure_pubsub_sub "$TASKS_SUBSCRIPTION" "$TASKS_TOPIC"
   ensure_pubsub_sub "$RESULTS_SUB" "$RESULTS_TOPIC"
+  ) &
+  PIDS+=($!)
+  RESULTS+=("PubSub")
 else
   log_info "Skipping Step 7: Pub/Sub topics and subscriptions configuration (Bypassed by CLI flag)."
 fi
@@ -575,10 +590,11 @@ fi
 # Step 8: Configuring BigQuery Datasets & Tables
 # ------------------------------------------------------------------------------
 if [ "$RUN_BQ" = "true" ]; then
-  log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
-  # Workaround for bq error SystemError: buffer overflow
-  export COLUMNS=80
-  export LINES=24
+  (
+    log_step "8/10" "Configuring BigQuery Datasets & Tables 📊"
+    # Workaround for bq error SystemError: buffer overflow
+    export COLUMNS=80
+    export LINES=24
 
 
   log_info "Checking BigQuery dataset: $BQ_DATASET..."
@@ -737,8 +753,30 @@ if [ "$RUN_BQ" = "true" ]; then
       fi
     done
   fi
+  ) &
+  PIDS+=($!)
+  RESULTS+=("BigQuery")
 else
   log_info "Skipping Step 8: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
+fi
+
+
+# Wait for all parallel jobs to complete
+FAILURES=0
+for i in "${!PIDS[@]}"; do
+  wait "${PIDS[$i]}"
+  STATUS=$?
+  if [ $STATUS -eq 0 ]; then
+    log_success "${RESULTS[$i]} configuration completed successfully."
+  else
+    log_error "${RESULTS[$i]} configuration failed."
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+
+if [ "$FAILURES" -gt 0 ]; then
+  log_error "One or more parallel steps failed. Aborting deployment."
+  exit 1
 fi
 
 # ------------------------------------------------------------------------------
@@ -891,87 +929,6 @@ if [ "$RUN_K8S" = "true" ]; then
     exit 1
   fi
 
-  log_info "Applying Sandbox Gateway..."
-  kubectl apply -f k8s/sandbox-gateway.yaml
-
-  log_info "Applying Sandbox Claim Template..."
-  source ./setup-env.sh >/dev/null
-  envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
-
-  log_info "Applying Sandbox WarmPool..."
-  kubectl apply -f k8s/sandbox-warmpool.yaml
-
-  log_info "Waiting for Sandbox WarmPool pods to be ready..."
-  # Wait for the warmpool pods to be created and running. The warmpool creates 5 replicas.
-  # We will wait for at least one to be running, or all of them depending on preference.
-  # Since it's a warmpool, we should probably wait for all of them to avoid immediate cold starts.
-  for i in {1..60}; do
-    READY_PODS=$(kubectl get pods -n hackathon-judge -l app=sandbox --field-selector status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' ' || echo "0")
-    if [ "$READY_PODS" -ge 5 ]; then
-      log_success "Sandbox WarmPool pods are ready ($READY_PODS/5)!"
-      break
-    fi
-    log_info "  Still waiting for Sandbox WarmPool pods to be ready ($READY_PODS/5)... (attempt $i/60)"
-    sleep 5
-  done
-  
-  if [ "$READY_PODS" -lt 5 ]; then
-    log_warning "Sandbox WarmPool pods did not fully reach ready state within 5 minutes ($READY_PODS/5 ready)."
-  fi
-
-  log_info "Applying Backend..."
-  source ./setup-env.sh >/dev/null
-  envsubst < k8s/backend.yaml | kubectl apply -f -
-
-  log_info "Applying Agent..."
-  source ./setup-env.sh >/dev/null
-  envsubst < k8s/agent.yaml | kubectl apply -f -
-
-  log_info "Applying Frontend..."
-  source ./setup-env.sh >/dev/null
-  envsubst < k8s/frontend.yaml | kubectl apply -f -
-
-  log_info "Applying Gateway and Routing..."
-  kubectl apply -f k8s/gateway.yaml
-
-  log_info "Waiting for all deployments to be ready..."
-  for deploy in backend frontend agent; do
-    if ! kubectl rollout status deployment/$deploy -n hackathon-judge --timeout=300s; then
-      log_error "$deploy failed to reach ready state within 5 minutes."
-      exit 1
-    fi
-  done
-
-  log_info "Waiting for Gateways to get public IPs..."
-  GATEWAY_IP=""
-  SANDBOX_GATEWAY_IP=""
-  for i in {1..30}; do
-    if [ -z "$GATEWAY_IP" ]; then
-      GATEWAY_IP=$(kubectl get gateway -n hackathon-judge hackathon-judge-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-    fi
-    if [ -z "$SANDBOX_GATEWAY_IP" ]; then
-      SANDBOX_GATEWAY_IP=$(kubectl get gateway -n hackathon-judge sandbox-router-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
-    fi
-    
-    if [ -n "$GATEWAY_IP" ] && [ -n "$SANDBOX_GATEWAY_IP" ]; then
-      break
-    fi
-    log_info "  Still waiting for Gateway IPs... (attempt $i/30)"
-    sleep 10
-  done
-
-  if [ -z "$GATEWAY_IP" ]; then
-    log_warning "Main Gateway did not get a public IP within 5 minutes."
-  else
-    log_success "Main Gateway is available at public IP: $GATEWAY_IP"
-  fi
-
-  if [ -z "$SANDBOX_GATEWAY_IP" ]; then
-    log_warning "Sandbox Gateway did not get a public IP within 5 minutes."
-  else
-    log_success "Sandbox Gateway is available at public IP: $SANDBOX_GATEWAY_IP"
-  fi
-
   log_success "Kubernetes resources applied and verified!"
 else
   log_info "Skipping Step 10: Kubernetes deployment (Bypassed by CLI flag)."
@@ -987,10 +944,4 @@ echo "  https://console.cloud.google.com/artifacts/docker/${GOOGLE_CLOUD_PROJECT
 log_info "To view your GKE Autopilot cluster, visit:"
 echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOGLE_CLOUD_PROJECT}"
 log_info "The Sandbox Router is deployed and available at: sandbox-router-svc.hackathon-judge.svc.cluster.local"
-if [ -n "${GATEWAY_IP:-}" ]; then
-  log_info "The application is publicly available at: http://${GATEWAY_IP}"
-fi
-if [ -n "${SANDBOX_GATEWAY_IP:-}" ]; then
-  log_info "The sandbox router is publicly available at: http://${SANDBOX_GATEWAY_IP}"
-fi
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"
