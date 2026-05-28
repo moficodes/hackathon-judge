@@ -18,6 +18,9 @@
 # if any undefined variable is referenced, or if any pipeline fails
 set -euo pipefail
 
+# Start timing
+SCRIPT_START_TIME=$(date +%s)
+
 # ------------------------------------------------------------------------------
 # Terminal Styling & Logging Helpers
 # ------------------------------------------------------------------------------
@@ -895,3 +898,11 @@ else
 fi
 
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"
+
+# End timing
+SCRIPT_END_TIME=$(date +%s)
+DURATION=$((SCRIPT_END_TIME - SCRIPT_START_TIME))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+
+log_info "${BOLD}Total execution time: ${MINUTES}m ${SECONDS}s${NC}"
