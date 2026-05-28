@@ -71,7 +71,9 @@ log_error() {
 prefix_log() {
   local prefix=$1
   local color=$2
-  sed "s/^/${color}[${prefix}]${NC} /"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    echo -e "${color}[${prefix}]${NC} ${line}"
+  done
 }
 
 # ------------------------------------------------------------------------------
