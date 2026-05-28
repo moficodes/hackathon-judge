@@ -18,28 +18,28 @@ steps:
     args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/backend:latest', '.']
     dir: 'backend'
     id: 'build-backend'
-    waitFor: []
+    waitFor: ['-']
 
   # 2. Build Frontend
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/frontend:latest', '.']
     dir: 'frontend'
     id: 'build-frontend'
-    waitFor: []
+    waitFor: ['-']
 
   # 3. Build Agent
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent:latest', '.']
     dir: 'agent'
     id: 'build-agent'
-    waitFor: []
+    waitFor: ['-']
 
   # 4. Build Agent Sandbox
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox:$COMMIT_SHA', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPO/agent-sandbox:latest', '.']
     dir: 'agent-sandbox'
     id: 'build-agent-sandbox'
-    waitFor: []
+    waitFor: ['-']
 
   # 5. Push Backend
   - name: 'gcr.io/cloud-builders/docker'
