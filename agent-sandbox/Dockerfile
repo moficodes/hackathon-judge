@@ -15,7 +15,7 @@
 # Stage 1: Builder for Go and binaries
 FROM debian:bookworm-slim AS builder
 
-RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt-get update && apt-get install -y curl tar gnupg
+RUN apt-get update && apt-get install -y curl tar gnupg
 
 # Install Go 1.26.2
 RUN curl -fsSL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -xzC /usr/local
