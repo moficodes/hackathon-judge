@@ -22,38 +22,38 @@ SELECT 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 'Productivity Hackathon', '2026-0
 WHERE NOT EXISTS (SELECT 1 FROM `hackathons` WHERE id = 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT '14710f6b-dbf7-4055-8106-9dbed109dae2', 'commitroom', 'CommitRoom', 'https://commitroom-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/commitroom_README.md'), 'https://github.com/moficodes/commitroom', 'Team CommitRoom', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT '14710f6b-dbf7-4055-8106-9dbed109dae2', 'commitroom', 'CommitRoom', 'https://commitroom-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/commitroom', 'Team CommitRoom', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = '14710f6b-dbf7-4055-8106-9dbed109dae2');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT 'f346dd70-809f-4ca5-93fa-28457a2ce0ef', 'daybreak-planner', 'Daybreak Planner', 'https://daybreak-planner-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/daybreak-planner_README.md'), 'https://github.com/moficodes/daybreak-planner', 'Team Daybreak', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT 'f346dd70-809f-4ca5-93fa-28457a2ce0ef', 'daybreak-planner', 'Daybreak Planner', 'https://daybreak-planner-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/daybreak-planner', 'Team Daybreak', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = 'f346dd70-809f-4ca5-93fa-28457a2ce0ef');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT 'e7a76b65-305e-4801-bc4e-080236f1d3cf', 'decidr', 'Decidr', 'https://decidr-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/decidr_README.md'), 'https://github.com/moficodes/decidr', 'Team Decidr', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT 'e7a76b65-305e-4801-bc4e-080236f1d3cf', 'decidr', 'Decidr', 'https://decidr-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/decidr', 'Team Decidr', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = 'e7a76b65-305e-4801-bc4e-080236f1d3cf');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT '8fac700e-4398-4f77-a45e-b1ab21f512c3', 'eisenhower-matrix-tool', 'Eisenhower Matrix Tool', 'https://eisenhower-matrix-tool-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/eisenhower-matrix-tool_README.md'), 'https://github.com/moficodes/eisenhower-matrix-tool', 'Team Eisenhower', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT '8fac700e-4398-4f77-a45e-b1ab21f512c3', 'eisenhower-matrix-tool', 'Eisenhower Matrix Tool', 'https://eisenhower-matrix-tool-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/eisenhower-matrix-tool', 'Team Eisenhower', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = '8fac700e-4398-4f77-a45e-b1ab21f512c3');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT '2ef0cf97-e221-4a8e-b107-2414456624a7', 'innerflow', 'InnerFlow', 'https://innerflow-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/innerflow_README.md'), 'https://github.com/moficodes/innerflow', 'Team InnerFlow', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT '2ef0cf97-e221-4a8e-b107-2414456624a7', 'innerflow', 'InnerFlow', 'https://innerflow-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/innerflow', 'Team InnerFlow', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = '2ef0cf97-e221-4a8e-b107-2414456624a7');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT 'd0f58408-8572-43ec-99b4-375eb2f6a23c', 'markdown-scratchpad', 'Markdown Scratchpad', 'https://markdown-scratchpad-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/markdown-scratchpad_README.md'), 'https://github.com/moficodes/markdown-scratchpad', 'Team Markdown', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT 'd0f58408-8572-43ec-99b4-375eb2f6a23c', 'markdown-scratchpad', 'Markdown Scratchpad', 'https://markdown-scratchpad-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/markdown-scratchpad', 'Team Markdown', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = 'd0f58408-8572-43ec-99b4-375eb2f6a23c');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT '442e7e86-102b-45f3-9406-6fda7b07c018', 'peakpulse', 'PeakPulse', 'https://peakpulse-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/peakpulse_README.md'), 'https://github.com/moficodes/peakpulse', 'Team PeakPulse', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT '442e7e86-102b-45f3-9406-6fda7b07c018', 'peakpulse', 'PeakPulse', 'https://peakpulse-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/peakpulse', 'Team PeakPulse', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = '442e7e86-102b-45f3-9406-6fda7b07c018');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT '7fa1a4a3-0e26-4c3a-9199-5445aa50321a', 'stakes-io', 'Stakes.io', 'https://stakes-io-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/stakes-io_README.md'), 'https://github.com/moficodes/stakes.io', 'Team Stakes', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT '7fa1a4a3-0e26-4c3a-9199-5445aa50321a', 'stakes-io', 'Stakes.io', 'https://stakes-io-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/stakes.io', 'Team Stakes', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = '7fa1a4a3-0e26-4c3a-9199-5445aa50321a');
 
 INSERT INTO `projects` (id, name, title, url, readme_ref, github_url, team_name, document, processing_date, hackathon_id, score)
-SELECT '9f30bcc5-5a9e-4136-8aa4-7042574da33e', 'triotask', 'TrioTask', 'https://triotask-lmlks4hcoq-wl.a.run.app', OBJ.MAKE_REF('gs://<<YOUR PROJECT ID>>-stabby/triotask_README.md'), 'https://github.com/moficodes/triotask', 'Team TrioTask', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
+SELECT '9f30bcc5-5a9e-4136-8aa4-7042574da33e', 'triotask', 'TrioTask', 'https://triotask-lmlks4hcoq-wl.a.run.app', NULL, 'https://github.com/moficodes/triotask', 'Team TrioTask', NULL, '2026-05-11', 'CFB272DC-BDA6-45EF-B899-343B0EAB85E1', 0
 WHERE NOT EXISTS (SELECT 1 FROM `projects` WHERE id = '9f30bcc5-5a9e-4136-8aa4-7042574da33e');
 

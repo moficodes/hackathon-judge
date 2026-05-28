@@ -508,58 +508,9 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 6: Storage Bucket & READMEs
+# Step 6: Storage Bucket & READMEs (DISABLED)
 # ------------------------------------------------------------------------------
-if [ "$RUN_BQ" = "true" ]; then
-  log_step "6/11" "Storage Bucket & READMEs 🪣"
-  log_info "Ensuring stabby bucket exists and is populated..."
-  if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
-    log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
-    gcloud storage buckets create "gs://${GOOGLE_CLOUD_PROJECT}-stabby" --location="${GOOGLE_CLOUD_REGION}"
-    log_success "Bucket created!"
-  else
-    log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
-  fi
-
-  # Fetch READMEs from GitHub using projects.csv as a manifest.
-  log_info "Fetching READMEs from GitHub..."
-  mkdir -p readmes
-  rm -f readmes/*
-  
-  if [ -f "projects.csv" ]; then
-    # Skip header and read pipe-separated file
-    tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
-      if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
-        # Extract owner and repo from URL
-        repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
-        
-        if [ -n "$repo_path" ]; then
-          raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
-          log_info "  Downloading README for $name..."
-          if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url"; then
-            # Try master branch if main fails
-            raw_url_master="https://raw.githubusercontent.com/$repo_path/master/README.md"
-            if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url_master"; then
-               log_warning "  Failed to download README for $name from main or master."
-            fi
-          fi
-        fi
-      fi
-    done
-  else
-    log_warning "projects.csv not found, cannot fetch READMEs."
-  fi
-
-  if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
-    log_info "Uploading READMEs to stabby bucket..."
-    gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
-    log_success "READMEs uploaded!"
-  else
-    log_warning "No readmes directory found or directory is empty. Skipping upload."
-  fi
-else
-  log_info "Skipping Step 6: Storage Bucket & READMEs (Bypassed by CLI flag)."
-fi
+log_info "Skipping Step 6: Storage Bucket & READMEs (Disabled: BigQuery AI Scoring no longer uses GCS READMEs)."
 
 # ------------------------------------------------------------------------------
 # PARALLEL EXECUTION: Steps 7, 8, and 9
@@ -672,98 +623,6 @@ if [ "$RUN_BQ" = "true" ]; then
       log_success "BigQuery dataset '$BQ_DATASET' already exists."
     fi
 
-    log_info "Ensuring BigQuery Connection exists..."
-    # Create connection if it doesn't exist
-    if ! bq show --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" &>/dev/null; then
-      log_info "Creating BigQuery connection..."
-      bq mk --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
-        --connection_type=CLOUD_RESOURCE "${GOOGLE_CLOUD_REGION}.connection-resource"
-    fi
-
-    log_info "Waiting for BigQuery Connection Service Account to propagate..."
-    CONNECTION_SA=""
-    for i in {1..10}; do
-      CONNECTION_SA=$(bq show --format=json --connection --project_id="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" "${GOOGLE_CLOUD_REGION}.connection-resource" 2>/dev/null | jq -r '.cloudResource.serviceAccountId' 2>/dev/null || echo "")
-      if [ -n "$CONNECTION_SA" ] && [ "$CONNECTION_SA" != "null" ]; then
-        log_info "  Found Connection Service Account: $CONNECTION_SA"
-        break
-      fi
-      log_info "  Waiting for connection service account... (attempt $i/10)"
-      sleep 3
-    done
-
-    if [ -z "$CONNECTION_SA" ] || [ "$CONNECTION_SA" = "null" ]; then
-      log_error "Failed to retrieve BigQuery Connection Service Account after multiple attempts."
-      exit 1
-    fi
-
-    log_info "Ensuring stabby bucket exists and is populated..."
-    if ! gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &>/dev/null; then
-      log_info "Creating bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
-      gcloud storage buckets create "gs://${GOOGLE_CLOUD_PROJECT}-stabby" --location="${GOOGLE_CLOUD_REGION}"
-      log_success "Bucket created!"
-    else
-      log_success "Bucket gs://${GOOGLE_CLOUD_PROJECT}-stabby already exists."
-    fi
-
-    # Fetch READMEs from GitHub using projects.csv as a manifest.
-    # Note: BigQuery data for projects is managed by seeds.sql;
-    # projects.csv is used here only for README discovery.
-    log_info "Fetching READMEs from GitHub..."
-    mkdir -p readmes
-    rm -f readmes/*
-
-    if [ -f "projects.csv" ]; then
-      # Skip header and read pipe-separated file
-      tail -n +2 projects.csv | while IFS="|" read -r id name title url github_url team_name document date hackathon_id score; do
-        if [ -n "$github_url" ] && [ "$github_url" != "github_url" ]; then
-          # Extract owner and repo from URL
-          repo_path=$(echo "$github_url" | sed -E 's|https://github.com/([^/]+)/([^/]+).*|\1/\2|')
-
-          if [ -n "$repo_path" ]; then
-            raw_url="https://raw.githubusercontent.com/$repo_path/main/README.md"
-            log_info "  Downloading README for $name..."
-            if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url"; then
-              # Try master branch if main fails
-              raw_url_master="https://raw.githubusercontent.com/$repo_path/master/README.md"
-              if ! curl -s -f -o "readmes/${name}_README.md" "$raw_url_master"; then
-                 log_warning "  Failed to download README for $name from main or master."
-              fi
-            fi
-          fi
-        fi
-      done
-    else
-      log_warning "projects.csv not found, cannot fetch READMEs."
-    fi
-
-    if [ -d "readmes" ] && [ "$(ls -A readmes)" ]; then
-      log_info "Uploading READMEs to stabby bucket..."
-      gcloud storage cp readmes/* "gs://${GOOGLE_CLOUD_PROJECT}-stabby/"
-      log_success "READMEs uploaded!"
-    else
-      log_warning "No readmes directory found or directory is empty. Skipping upload."
-    fi
-
-    log_info "Granting IAM roles to connection service account..."
-    log_info "  Granting roles/aiplatform.user..."
-    gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-      --member="serviceAccount:$CONNECTION_SA" \
-      --role="roles/aiplatform.user" \
-      --condition=None >/dev/null 2>&1
-
-    log_info "  Granting roles/storage.objectViewer..."
-    gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-      --member="serviceAccount:$CONNECTION_SA" \
-      --role="roles/storage.objectViewer" \
-      --condition=None >/dev/null 2>&1
-
-    log_success "Roles granted to connection service account!"
-
-    # Small extra buffer for IAM propagation
-    log_info "Allowing IAM propagation (5s)..."
-    sleep 5
-
     log_info "Applying schema.sql to dataset '$BQ_DATASET'..."
     if [ -f "backend/internal/repository/schema.sql" ]; then
       sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" \
@@ -774,7 +633,6 @@ if [ "$RUN_BQ" = "true" ]; then
     else
       log_warning "schema.sql not found. Skipping schema setup."
     fi
-
     log_info "Applying seeds.sql to dataset '$BQ_DATASET'..."
     if [ -f "backend/internal/repository/seeds.sql" ]; then
       sed -e "s/<<YOUR PROJECT ID>>/${GOOGLE_CLOUD_PROJECT}/g" -e "s/hackathon_judge/${BQ_DATASET}/g" backend/internal/repository/seeds.sql | bq --project_id="$GOOGLE_CLOUD_PROJECT" query --use_legacy_sql=false --location="$GOOGLE_CLOUD_REGION"

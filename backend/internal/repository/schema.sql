@@ -21,10 +21,12 @@ SET @@dataset_id = 'hackathon_judge';
 CREATE SCHEMA IF NOT EXISTS `hackathon_judge`;
 
 -- Create a Connection Resource
+/*
 CREATE CONNECTION IF NOT EXISTS `<<REGION>>.connection-resource`
 OPTIONS (
   connection_type = 'CLOUD_RESOURCE'
 );
+*/
 
 -- Hackathons Table
 CREATE TABLE IF NOT EXISTS `hackathons` (
@@ -77,9 +79,11 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
 
 
 -- Create an External Table
+/*
 CREATE EXTERNAL TABLE IF NOT EXISTS `submissions_objects`
 WITH CONNECTION `<<REGION>>.connection-resource`
 OPTIONS (
   object_metadata = 'SIMPLE',
   uris = ['gs://<<YOUR PROJECT ID>>-stabby/*']
 );
+*/

@@ -106,6 +106,7 @@ function ProjectCard({ project }: { project: Project }) {
           >
             {isTriggeringAgent ? '...' : isAgentRunning ? 'Running...' : hasAgentEvaluations ? 'Rerun Agent' : 'Run Agent'}
           </button>
+          {/* 
           <button
             onClick={handleJudgeBQ}
             disabled={isTriggeringBQ || isBQRunning}
@@ -116,6 +117,7 @@ function ProjectCard({ project }: { project: Project }) {
           >
             {isTriggeringBQ ? '...' : isBQRunning ? 'Running...' : hasBQEvaluations ? 'Rerun BQ' : 'Run BQ'}
           </button>
+          */}
         </div>
         {judgeMessage && (
           <p className={`text-xs mt-1 ${judgeMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
@@ -168,6 +170,7 @@ export default function HackathonDetail() {
                 <h2 className="text-3xl font-bold mb-2">{hackathon.title}</h2>
                 <p className="text-gray-500 mb-4">{new Date(hackathon.date).toLocaleDateString()} &middot; Status: <span className="font-medium text-slate-700 uppercase text-sm tracking-wide">{hackathon.status}</span></p>
               </div>
+              {/* 
               <button
                 onClick={handleJudgeAll}
                 disabled={isBulkJudging || !projects || projects.length === 0}
@@ -175,6 +178,7 @@ export default function HackathonDetail() {
               >
                 {isBulkJudging ? 'Starting Batch...' : 'Judge All Projects (BQ AI)'}
               </button>
+              */}
             </div>
             <div className="prose max-w-none text-gray-700">
               <p className="font-semibold text-lg mb-2">Goal:</p>
