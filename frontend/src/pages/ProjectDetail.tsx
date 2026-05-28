@@ -142,7 +142,6 @@ export default function ProjectDetail() {
                 >
                   {isTriggeringAgent ? 'Starting...' : isAgentRunning ? 'Judging...' : hasAgentEvaluations ? 'Rerun Agent' : 'Run Agent'}
                 </button>
-                {/* 
                 <button
                   onClick={handleJudgeBQ}
                   disabled={isTriggeringBQ || isBQRunning}
@@ -153,7 +152,6 @@ export default function ProjectDetail() {
                 >
                   {isTriggeringBQ ? 'Starting...' : isBQRunning ? 'Judging...' : hasBQEvaluations ? 'Rerun BQ AI' : 'Run BQ AI'}
                 </button>
-                */}
               </div>
               {judgeMessage && (
                 <p className={`text-sm font-medium ${judgeMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
