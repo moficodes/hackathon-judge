@@ -518,14 +518,13 @@ fi
 log_info "Skipping Step 6: Storage Bucket & READMEs (Disabled: BigQuery AI Scoring no longer uses GCS READMEs)."
 
 # ------------------------------------------------------------------------------
-# PARALLEL EXECUTION: Steps 7, 8, and 9
+# PARALLEL EXECUTION: Steps 7, 8, 9, and 10
 # ------------------------------------------------------------------------------
-log_step "7-9/11" "Parallel Execution: GKE, Pub/Sub, and BigQuery 🚀📨📊"
-log_info "Running GKE cluster creation, Pub/Sub configuration, and BigQuery configuration in parallel..."
+log_step "7-10/11" "Parallel Execution: GKE, Pub/Sub, BigQuery, and Cloud Build 🚀📨📊🛠️"
+log_info "Running GKE cluster creation, Pub/Sub configuration, BigQuery configuration, and Cloud Build in parallel..."
 
 PIDS=()
 RESULTS=()
-
 
 if [ "$RUN_GKE" = "true" ]; then
   (
@@ -656,6 +655,80 @@ else
   log_info "Skipping Step 9: BigQuery dataset and tables configuration (Bypassed by CLI flag)."
 fi
 
+# ------------------------------------------------------------------------------
+# Step 10: Triggering Service Builds with Cloud Build
+# ------------------------------------------------------------------------------
+if [ "$RUN_BUILD" = "true" ]; then
+  (
+    log_info "Starting Service Builds with Cloud Build..."
+
+    # Detect Git status and determine target tag
+    COMMIT_SHA="latest"
+    IS_DIRTY=false
+
+    if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
+      # Check if git repository has any uncommitted changes (tracked or untracked)
+      if [ -n "$(git status --porcelain)" ]; then
+        log_warning "Git repository has uncommitted changes (dirty state)."
+        COMMIT_SHA="dirty-$(date +%s)"
+        IS_DIRTY=true
+      else
+        COMMIT_SHA=$(git rev-parse --short HEAD)
+        log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
+      fi
+    else
+      log_warning "Git not detected or repository not initialized. Generating timestamp tag."
+      COMMIT_SHA="manual-$(date +%s)"
+      IS_DIRTY=true # Non-git workspaces always trigger rebuild
+    fi
+    export COMMIT_SHA
+
+    log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
+    log_info "Registry Repository: $ARTIFACT_REPO_NAME"
+    log_info "Target Tag (SHA):    $COMMIT_SHA"
+
+    IMAGES_TO_CHECK=("backend" "frontend" "agent" "agent-sandbox")
+    ALL_IMAGES_EXIST=true
+
+    if [ "$IS_DIRTY" = "false" ]; then
+      log_info "Checking if all required service images already exist in Artifact Registry..."
+      for img in "${IMAGES_TO_CHECK[@]}"; do
+        image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
+        log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
+        
+        # Use gcloud artifacts docker tags list and grep for the specific tag
+        if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
+          log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
+        else
+          log_warning "    Image '${img}' with tag '${COMMIT_SHA}' is missing."
+          ALL_IMAGES_EXIST=false
+          break
+        fi
+      done
+    else
+      ALL_IMAGES_EXIST=false
+    fi
+
+    if [ "$ALL_IMAGES_EXIST" = "true" ]; then
+      log_success "All required images already exist in Artifact Registry with tag '$COMMIT_SHA'."
+      log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
+    else
+      log_info "Triggering Google Cloud Build to compile and package all services..."
+      if gcloud builds submit --config cloudbuild.yaml . \
+          --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
+        log_success "Cloud Build completed successfully! All containers pushed to registry."
+      else
+        log_error "Cloud Build submission failed."
+        log_info "Please check the Cloud Build logs above for specific compilation/Docker errors."
+        exit 1
+      fi
+    fi
+  ) 2>&1 | prefix_log "Build" "${YELLOW}" &
+  PIDS+=($!)
+  RESULTS+=("Build")
+else
+  log_info "Skipping Step 10: Cloud Build container packaging (Bypassed by CLI flag)."
+fi
 
 # Wait for all parallel jobs to complete
 FAILURES=0
@@ -679,71 +752,93 @@ fi
 # Step 10: Triggering Service Builds with Cloud Build
 # ------------------------------------------------------------------------------
 if [ "$RUN_BUILD" = "true" ]; then
-  log_step "10/11" "Triggering Service Builds with Cloud Build 🛠️"
+  (
+    log_info "Starting Service Builds with Cloud Build..."
 
-  # Detect Git status and determine target tag
-  COMMIT_SHA="latest"
-  IS_DIRTY=false
+    # Detect Git status and determine target tag
+    COMMIT_SHA="latest"
+    IS_DIRTY=false
 
-  if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
-    # Check if git repository has any uncommitted changes (tracked or untracked)
-    if [ -n "$(git status --porcelain)" ]; then
-      log_warning "Git repository has uncommitted changes (dirty state)."
-      COMMIT_SHA="dirty-$(date +%s)"
-      IS_DIRTY=true
-    else
-      COMMIT_SHA=$(git rev-parse --short HEAD)
-      log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
-    fi
-  else
-    log_warning "Git not detected or repository not initialized. Generating timestamp tag."
-    COMMIT_SHA="manual-$(date +%s)"
-    IS_DIRTY=true # Non-git workspaces always trigger rebuild
-  fi
-  export COMMIT_SHA
-
-  log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
-  log_info "Registry Repository: $ARTIFACT_REPO_NAME"
-  log_info "Target Tag (SHA):    $COMMIT_SHA"
-
-  IMAGES_TO_CHECK=("backend" "frontend" "agent" "agent-sandbox")
-  ALL_IMAGES_EXIST=true
-
-  if [ "$IS_DIRTY" = "false" ]; then
-    log_info "Checking if all required service images already exist in Artifact Registry..."
-    for img in "${IMAGES_TO_CHECK[@]}"; do
-      image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
-      log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
-
-      # Use gcloud artifacts docker tags list and grep for the specific tag
-      if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
-        log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
+    if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
+      # Check if git repository has any uncommitted changes (tracked or untracked)
+      if [ -n "$(git status --porcelain)" ]; then
+        log_warning "Git repository has uncommitted changes (dirty state)."
+        COMMIT_SHA="dirty-$(date +%s)"
+        IS_DIRTY=true
       else
-        log_warning "    Image '${img}' with tag '${COMMIT_SHA}' is missing."
-        ALL_IMAGES_EXIST=false
-        break
+        COMMIT_SHA=$(git rev-parse --short HEAD)
+        log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
       fi
-    done
-  else
-    ALL_IMAGES_EXIST=false
-  fi
-
-  if [ "$ALL_IMAGES_EXIST" = "true" ]; then
-    log_success "All required images already exist in Artifact Registry with tag '$COMMIT_SHA'."
-    log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
-  else
-    log_info "Triggering Google Cloud Build to compile and package all services..."
-    if gcloud builds submit --config cloudbuild.yaml . \
-        --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
-      log_success "Cloud Build completed successfully! All containers pushed to registry."
     else
-      log_error "Cloud Build submission failed."
-      log_info "Please check the Cloud Build logs above for specific compilation/Docker errors."
-      exit 1
+      log_warning "Git not detected or repository not initialized. Generating timestamp tag."
+      COMMIT_SHA="manual-$(date +%s)"
+      IS_DIRTY=true # Non-git workspaces always trigger rebuild
     fi
-  fi
+    export COMMIT_SHA
+
+    log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
+    log_info "Registry Repository: $ARTIFACT_REPO_NAME"
+    log_info "Target Tag (SHA):    $COMMIT_SHA"
+
+    IMAGES_TO_CHECK=("backend" "frontend" "agent" "agent-sandbox")
+    ALL_IMAGES_EXIST=true
+
+    if [ "$IS_DIRTY" = "false" ]; then
+      log_info "Checking if all required service images already exist in Artifact Registry..."
+      for img in "${IMAGES_TO_CHECK[@]}"; do
+        image_path="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/${img}"
+        log_info "  Checking image '${img}' for tag '${COMMIT_SHA}'..."
+
+        # Use gcloud artifacts docker tags list and grep for the specific tag
+        if gcloud artifacts docker tags list "$image_path" 2>/dev/null | grep -qE "^${COMMIT_SHA}\s"; then
+          log_success "    Image '${img}' with tag '${COMMIT_SHA}' exists."
+        else
+          log_warning "    Image '${img}' with tag '${COMMIT_SHA}' is missing."
+          ALL_IMAGES_EXIST=false
+          break
+        fi
+      done
+    else
+      ALL_IMAGES_EXIST=false
+    fi
+
+    if [ "$ALL_IMAGES_EXIST" = "true" ]; then
+      log_success "All required images already exist in Artifact Registry with tag '$COMMIT_SHA'."
+      log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
+    else
+      log_info "Triggering Google Cloud Build to compile and package all services..."
+      if gcloud builds submit --config cloudbuild.yaml . \
+          --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
+        log_success "Cloud Build completed successfully! All containers pushed to registry."
+      else
+        log_error "Cloud Build submission failed."
+        log_info "Please check the Cloud Build logs above for specific compilation/Docker errors."
+        exit 1
+      fi
+    fi
+  ) 2>&1 | prefix_log "Build" "${YELLOW}" &
+  PIDS+=($!)
+  RESULTS+=("Build")
 else
   log_info "Skipping Step 10: Cloud Build container packaging (Bypassed by CLI flag)."
+fi
+
+# Wait for all parallel jobs to complete
+FAILURES=0
+for i in "${!PIDS[@]}"; do
+  wait "${PIDS[$i]}"
+  STATUS=$?
+  if [ $STATUS -eq 0 ]; then
+    log_success "${RESULTS[$i]} configuration completed successfully."
+  else
+    log_error "${RESULTS[$i]} configuration failed."
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+
+if [ "$FAILURES" -gt 0 ]; then
+  log_error "One or more parallel steps failed. Aborting deployment."
+  exit 1
 fi
 
 # ------------------------------------------------------------------------------
