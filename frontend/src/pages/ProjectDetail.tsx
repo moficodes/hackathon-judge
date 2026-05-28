@@ -24,7 +24,6 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isTriggeringAgent, setIsTriggeringAgent] = useState(false);
-  const [isTriggeringBQ, setIsTriggeringBQ] = useState(false);
   const [judgeMessage, setJudgeMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
   
   const { data: project, error: projectError, isLoading: isProjectLoading, mutate: mutateProject } = useSWR<Project>(
@@ -43,10 +42,8 @@ export default function ProjectDetail() {
   );
 
   const isAgentRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'sandbox');
-  const isBQRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'BQ AI Function');
   const hasAgentEvaluations = evaluations?.some(e => e.judge_id === 'sandbox');
-  const hasBQEvaluations = evaluations?.some(e => e.judge_id === 'BQ AI Function');
-  const isRunning = isAgentRunning || isBQRunning;
+  const isRunning = isAgentRunning;
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -75,26 +72,6 @@ export default function ProjectDetail() {
       setJudgeMessage({ text: 'Error starting judging', type: 'error' });
     } finally {
       setIsTriggeringAgent(false);
-      setTimeout(() => setJudgeMessage(null), 3000);
-    }
-  };
-
-  const handleJudgeBQ = async () => {
-    if (hasBQEvaluations && !window.confirm('BQ evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
-      return;
-    }
-
-    setIsTriggeringBQ(true);
-    setJudgeMessage(null);
-    try {
-      const response = await fetch(`/api/projects/${id}/judge/bq`, { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to start judging');
-      setJudgeMessage({ text: 'BQ AI judging task started!', type: 'success' });
-      setTimeout(() => mutateEvaluations(), 1000);
-    } catch {
-      setJudgeMessage({ text: 'Error starting judging', type: 'error' });
-    } finally {
-      setIsTriggeringBQ(false);
       setTimeout(() => setJudgeMessage(null), 3000);
     }
   };
@@ -141,16 +118,6 @@ export default function ProjectDetail() {
                   }`}
                 >
                   {isTriggeringAgent ? 'Starting...' : isAgentRunning ? 'Judging...' : hasAgentEvaluations ? 'Rerun Agent' : 'Run Agent'}
-                </button>
-                <button
-                  onClick={handleJudgeBQ}
-                  disabled={isTriggeringBQ || isBQRunning}
-                  className={`inline-block border px-6 py-3 rounded-lg font-bold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isBQRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
-                    'border-green-600 bg-green-600 text-white hover:bg-green-700 hover:shadow-md active:scale-95'
-                  }`}
-                >
-                  {isTriggeringBQ ? 'Starting...' : isBQRunning ? 'Judging...' : hasBQEvaluations ? 'Rerun BQ AI' : 'Run BQ AI'}
                 </button>
               </div>
               {judgeMessage && (
