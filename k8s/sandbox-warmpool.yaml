@@ -20,7 +20,7 @@ metadata:
 spec:
   updateStrategy:
     type: Recreate
-  replicas: 3
+  replicas: 5
   sandboxTemplateRef:
     # This name must exactly match the 'metadata.name' of your SandboxTemplate.
     name: sandbox-hackathon-judge-template
