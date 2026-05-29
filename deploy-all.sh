@@ -830,7 +830,6 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Applying Sandbox Infrastructure (Claim Template, Warmpool, Gemini Sandbox)..."
   envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
   kubectl apply -f k8s/sandbox-warmpool.yaml
-  envsubst < k8s/agent-sandbox.yaml | kubectl apply -f -
 
   log_info "Applying Application Gateway..."
   kubectl apply -f k8s/gateway.yaml
