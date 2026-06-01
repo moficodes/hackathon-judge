@@ -538,6 +538,7 @@ if [ "$RUN_GKE" = "true" ]; then
 
       if gcloud container clusters create-auto "$CLUSTER_NAME" \
           --region="$GOOGLE_CLOUD_REGION" \
+          --labels dev-tutorial=airoadshow \
           --project="$GOOGLE_CLOUD_PROJECT"; then
         log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully created!"
       else
