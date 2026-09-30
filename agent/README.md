@@ -34,6 +34,15 @@ uv run uvicorn src.main:app --reload
 The API will be available at `http://localhost:8000`.
 - Health check endpoint: `http://localhost:8000/health`
 
+## Sandbox Configuration
+
+When `AGENT_TYPE=sandbox_direct`, the agent claims an isolated sandbox from an [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) warm pool for each evaluation. Configure it with these environment variables (see `.env.example`):
+
+- `SANDBOX_WARMPOOL` (required): name of the `SandboxWarmPool` to claim sandboxes from, e.g. `hackathon-sandboxwarmpool`.
+- `SANDBOX_NAMESPACE` (required): namespace the warm pool lives in, e.g. `hackathon-judge`.
+- `SANDBOX_CONNECTION_METHOD`: `router` (default; in-cluster via `sandbox-router-svc.agent-sandbox-system`) or `tunnel` (local development; the SDK runs `kubectl port-forward` to the router, so a working kubeconfig for the cluster is required).
+- `SANDBOX_ROUTER_URL` (optional, `router` mode only): override the router URL. Default `http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080`.
+
 ## Running Tests
 
 The project uses `pytest` for testing. To run the full test suite:

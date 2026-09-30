@@ -62,11 +62,16 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: RESULTS_TOPIC
-        - name: SANDBOX_TEMPLATE
+        - name: SANDBOX_WARMPOOL
           valueFrom:
             configMapKeyRef:
               name: hackathon-judge-config
-              key: SANDBOX_TEMPLATE
+              key: SANDBOX_WARMPOOL
+        - name: SANDBOX_CONNECTION_METHOD
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: SANDBOX_CONNECTION_METHOD
         - name: SANDBOX_NAMESPACE
           valueFrom:
             configMapKeyRef:
