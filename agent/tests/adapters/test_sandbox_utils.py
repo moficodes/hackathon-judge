@@ -14,62 +14,59 @@
 
 import os
 import pytest
-from unittest.mock import patch, MagicMock
-from src.adapters.outbound.sandbox_utils import get_sandbox_client
+from unittest.mock import patch
+from src.adapters.outbound.sandbox_utils import get_sandbox_client, DEFAULT_ROUTER_URL
 from k8s_agent_sandbox.models import (
-    SandboxGatewayConnectionConfig,
-    SandboxInClusterConnectionConfig,
-    SandboxDirectConnectionConfig
+    SandboxDirectConnectionConfig,
+    SandboxLocalTunnelConnectionConfig,
 )
 
-def test_get_sandbox_client_gateway():
-    with patch.dict(os.environ, {
-        "SANDBOX_CONNECTION_METHOD": "gateway",
-        "SANDBOX_GATEWAY_NAME": "my-gateway",
-        "SANDBOX_NAMESPACE": "test-ns"
-    }):
+
+def _config_for(env):
+    with patch.dict(os.environ, env, clear=True):
         with patch("src.adapters.outbound.sandbox_utils.SandboxClient") as mock_client:
             get_sandbox_client()
             mock_client.assert_called_once()
-            config = mock_client.call_args[1]["connection_config"]
-            assert isinstance(config, SandboxGatewayConnectionConfig)
-            assert config.gateway_name == "my-gateway"
-            assert config.gateway_namespace == "test-ns"
+            return mock_client.call_args[1]["connection_config"]
 
-def test_get_sandbox_client_router_dns():
-    with patch.dict(os.environ, {
-        "SANDBOX_CONNECTION_METHOD": "router_dns",
-        "SANDBOX_NAMESPACE": "my-cool-namespace"
-    }):
-        with patch("src.adapters.outbound.sandbox_utils.SandboxClient") as mock_client:
-            get_sandbox_client()
-            config = mock_client.call_args[1]["connection_config"]
-            assert isinstance(config, SandboxDirectConnectionConfig)
-            assert config.api_url == "http://sandbox-router-svc.my-cool-namespace.svc.cluster.local:8080"
 
-def test_get_sandbox_client_router_dns_missing_namespace():
-    with patch.dict(os.environ, {
-        "SANDBOX_CONNECTION_METHOD": "router_dns"
-    }, clear=True):
-        with pytest.raises(ValueError, match="SANDBOX_NAMESPACE is required for router_dns connection method"):
-            get_sandbox_client()
+def test_default_router_url_points_at_agent_sandbox_system():
+    assert DEFAULT_ROUTER_URL == "http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080"
 
-def test_get_sandbox_client_in_cluster_dns():
-    with patch.dict(os.environ, {
-        "SANDBOX_CONNECTION_METHOD": "in_cluster_dns"
-    }):
-        with patch("src.adapters.outbound.sandbox_utils.SandboxClient") as mock_client:
-            get_sandbox_client()
-            config = mock_client.call_args[1]["connection_config"]
-            assert isinstance(config, SandboxInClusterConnectionConfig)
-            assert config.use_pod_ip is False
 
-def test_get_sandbox_client_in_cluster_ip():
-    with patch.dict(os.environ, {
-        "SANDBOX_CONNECTION_METHOD": "in_cluster_ip"
-    }):
-        with patch("src.adapters.outbound.sandbox_utils.SandboxClient") as mock_client:
+def test_router_is_default_method():
+    config = _config_for({})
+    assert isinstance(config, SandboxDirectConnectionConfig)
+    assert config.api_url == DEFAULT_ROUTER_URL
+
+
+def test_router_method_explicit():
+    config = _config_for({"SANDBOX_CONNECTION_METHOD": "router"})
+    assert isinstance(config, SandboxDirectConnectionConfig)
+    assert config.api_url == DEFAULT_ROUTER_URL
+
+
+def test_router_method_url_override():
+    config = _config_for({
+        "SANDBOX_CONNECTION_METHOD": "router",
+        "SANDBOX_ROUTER_URL": "http://my-router.example:9000",
+    })
+    assert isinstance(config, SandboxDirectConnectionConfig)
+    assert config.api_url == "http://my-router.example:9000"
+
+
+def test_method_is_case_insensitive():
+    config = _config_for({"SANDBOX_CONNECTION_METHOD": "ROUTER"})
+    assert isinstance(config, SandboxDirectConnectionConfig)
+
+
+def test_tunnel_method():
+    config = _config_for({"SANDBOX_CONNECTION_METHOD": "tunnel"})
+    assert isinstance(config, SandboxLocalTunnelConnectionConfig)
+
+
+@pytest.mark.parametrize("method", ["gateway", "router_dns", "in_cluster_dns", "in_cluster_ip", "bogus"])
+def test_unknown_or_removed_methods_raise(method):
+    with patch.dict(os.environ, {"SANDBOX_CONNECTION_METHOD": method}, clear=True):
+        with pytest.raises(ValueError, match=f"Unknown SANDBOX_CONNECTION_METHOD: {method}"):
             get_sandbox_client()
-            config = mock_client.call_args[1]["connection_config"]
-            assert isinstance(config, SandboxInClusterConnectionConfig)
-            assert config.use_pod_ip is True
