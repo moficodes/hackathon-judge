@@ -72,16 +72,16 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     Returns:
         A JSON string containing the evaluation results.
     """
-    template = os.getenv("SANDBOX_TEMPLATE")
-    if not template:
-        raise ValueError("SANDBOX_TEMPLATE environment variable is required")
+    warmpool = os.getenv("SANDBOX_WARMPOOL")
+    if not warmpool:
+        raise ValueError("SANDBOX_WARMPOOL environment variable is required")
     namespace = os.getenv("SANDBOX_NAMESPACE")
     if not namespace:
         raise ValueError("SANDBOX_NAMESPACE environment variable is required")
     
     client = get_sandbox_client()
     sandbox = client.create_sandbox(
-        template=template,
+        warmpool=warmpool,
         namespace=namespace,
     )
     try:
