@@ -12,19 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: extensions.agents.x-k8s.io/v1alpha1
+apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
   name: sandbox-hackathon-judge-template
   namespace: hackathon-judge
 spec:
+  # We ship our own NetworkPolicy (k8s/sandbox-networkpolicy.yaml) because the
+  # managed default blocks the GKE metadata server, which Workload Identity needs.
+  networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
       labels:
         app: sandbox
-      annotations:
-        test: "yes"
     spec:
+      # Workload Identity uses the metadata server, not the KSA token.
+      automountServiceAccountToken: false
       runtimeClassName: gvisor
       serviceAccountName: hackathon-judge-sandbox-sa
       containers:
