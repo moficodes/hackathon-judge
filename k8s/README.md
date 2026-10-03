@@ -27,7 +27,7 @@ graph TD
 - **Backend (`backend-deployment.yaml`, `backend-service.yaml`)**: The main API server.
 - **Agent (`agent-deployment.yaml`)**: The ADK agent that processes requests asynchronously via Pub/Sub.
 - **Gateway (`gateway.yaml`, `httproute.yaml`)**: Kubernetes Gateway API for external routing.
-- **Sandbox (`sandbox_router.yaml`, `sandbox-claim-template.yaml`)**: Infrastructure for dynamically provisioning isolated sandboxes for agent execution.
+- **Sandbox (`sandbox_router.yaml`, `sandbox-networkpolicy.yaml`, `sandbox-claim-template.yaml`, `sandbox-warmpool.yaml`)**: Internal router (namespace `agent-sandbox-system`), sandbox NetworkPolicy, template and warm pool for isolated agent execution.
 - **Configuration (`configmap.yaml`, `namespace.yaml`, `service-account.yaml`)**: Core cluster configuration and RBAC.
 
 ## Deployment
@@ -52,8 +52,10 @@ graph TD
    kubectl apply -f agent-deployment.yaml
    ```
 
-4. Apply the sandbox configuration:
+4. Apply the sandbox configuration. Install Agent Sandbox v1.0.4 first: `kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.4/sandbox.yaml -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.4/extensions.yaml`
    ```bash
    kubectl apply -f sandbox_router.yaml
-   kubectl apply -f sandbox-claim-template.yaml
+   kubectl apply -f sandbox-networkpolicy.yaml
+   envsubst < sandbox-claim-template.yaml | kubectl apply -f -
+   kubectl apply -f sandbox-warmpool.yaml
    ```

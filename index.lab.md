@@ -20,7 +20,7 @@ The platform is designed to automate the process of reviewing, testing, and grad
 ### What you'll do
 - Provision the target Google Cloud services and establish target APIs.
 - Initialize GKE Autopilot and install the Agent Sandbox CRDs, cluster configurations, and the Sandbox Router.
-- Deploy the Sandbox Gateway, Sandbox Claim Template, and a Sandbox WarmPool.
+- Apply the Sandbox Network Policy, Sandbox Template, and a Sandbox WarmPool.
 - Deploy the REST Backend API, ADK Judging worker Agent, and React Frontend UI.
 - Wire external load-balanced routing and access the platform to run secure, sandboxed judging workflows.
 
@@ -120,7 +120,7 @@ The script creates the `hackathon_judge` dataset, applies structural SQL databas
 The script triggers the `cloudbuild.yaml` definition to compile our React UI, Go REST server, Python ADK worker, and FastAPI sandbox, packaging them into isolated container images tagged with the active repository Git commit SHA and saving them to Artifact Registry.
 
 #### 9. Registering Agent Sandbox Custom Resource Definitions (CRDs)
-The script downloads and registers the latest Kubernetes-sigs Agent Sandbox Custom Resource Definitions (`manifest.yaml` and `extensions.yaml`) to extend GKE's core capabilities.
+The script installs a pinned release (`v1.0.4`) of the Kubernetes-sigs Agent Sandbox controller and Custom Resource Definitions (`sandbox.yaml` and `extensions.yaml`) to extend GKE's core capabilities.
 > **Why we install the Agent Sandbox infrastructure:**
 > Standard Kubernetes clusters lack support for allocating protected on-demand sandboxes. Registering Agent Sandbox CRDs extends GKE's control plane, enabling Kubernetes to natively orchestrate secure sandboxed micro-containers using Custom Resources (like SandboxTemplates and SandboxClaims).
 
@@ -128,16 +128,16 @@ The script downloads and registers the latest Kubernetes-sigs Agent Sandbox Cust
 The script provisions the `hackathon-judge` namespace, registers Kubernetes Service Accounts (KSAs), and establishes Workload Identity mappings to grant GKE pods target Google Cloud permissions.
 
 #### 11. Deploying the Sandbox Router
-The script applies the `k8s/sandbox_router.yaml` manifest, initiating the Sandbox Router deployment and service and waiting for them to reach a healthy status.
+The script applies the `k8s/sandbox_router.yaml` manifest, deploying the upstream Sandbox Router into the `agent-sandbox-system` namespace and waiting for it to become healthy.
 > **Why we deploy the Sandbox Router:**
-> The Sandbox Router is the central internal control-plane gateway. It exposes a simple API that the ADK judging worker agent calls to claim, access, or release secure sandboxes, managing routing mappings and abstracting cluster-level pod allocation from application logic.
+> The Sandbox Router is a small internal reverse proxy. The worker agent sends each request to the router with headers identifying the target sandbox, and the router forwards it to the right sandbox pod. It is only reachable from inside the cluster: sandbox pods accept traffic from the router and nothing else.
 
 ---
 
-## Configure Agent Sandbox Gateway, Claims, and WarmPool
+## Configure Agent Sandbox Network Policy, Template, and WarmPool
 Duration: 05:00
 
-In this step, you will manually configure the specialized Sandbox network Gateway, register the Sandbox Claim Template, and deploy the Sandbox WarmPool to enable ultra-low latency sandboxing.
+In this step, you will lock down sandbox networking, register the Sandbox Template, and deploy the Sandbox WarmPool to enable ultra-low latency sandboxing.
 
 ### Source Environment Variables
 Before applying templates that require environment variables, source the `setup-env.sh` script to parse and export all necessary variables to your shell:
@@ -146,15 +146,17 @@ Before applying templates that require environment variables, source the `setup-
 source ./setup-env.sh
 ```
 
-### Apply Sandbox Gateway
-Deploy the gateway specifically configured for routing sandbox traffic:
+### Apply Sandbox Network Policy
+Restrict what sandbox pods can talk to:
 
 ```bash
-kubectl apply -f k8s/sandbox-gateway.yaml
+kubectl apply -f k8s/sandbox-networkpolicy.yaml
 ```
 
-> **Why we deploy the Sandbox Gateway:**
-> The Sandbox Gateway acts as the secure, high-performance ingress controller dedicated solely to sandbox routing. It isolates the sandbox network, providing a secure, local target that allows worker agents to communicate with claimed sandboxes without exposing endpoints externally.
+> **Why we apply a Sandbox Network Policy:**
+> Sandboxes run untrusted code. This policy only lets the Sandbox Router connect in, and only lets sandboxes connect out to cluster DNS, the GKE metadata server (for Workload Identity) and the public internet. They cannot reach other pods or private IPs in your VPC.
+>
+> Allowing the metadata server is a deliberate trade-off: the code being judged could also use the sandbox's identity. That is why the sandbox service account is only granted `roles/aiplatform.user`.
 
 ### Apply Sandbox Claim Template
 Use `envsubst` to populate the sandbox template definition with your active environment variables, and apply it:
@@ -408,7 +410,7 @@ graph TD
     PubSubT["Pub/Sub Topic: judging-tasks"]:::queue
     PubSubR["Pub/Sub Topic: judging-results"]:::queue
     Worker["Python ADK Worker (Supervisor)"]:::comp
-    Router["Sandbox Router & Gateway"]:::sandbox
+    Router["Sandbox Router (internal)"]:::sandbox
     WarmPool["Sandbox WarmPool (Pre-warmed Pods)"]:::sandbox
     Sandbox["gVisor Secure Sandbox Pod"]:::sandbox
     FastAPI["FastAPI Runtime Server"]:::sandbox
@@ -455,7 +457,7 @@ graph TD
 * **Go REST Backend API**: Manages global API endpoints. It stores project configurations in BigQuery and pushes judging jobs to Pub/Sub to decouple heavy computational execution pipelines.
 * **Google Pub/Sub**: The message-oriented broker that holds task messages safely on-queue, orchestrating communication asynchronously between the API and active worker instances.
 * **Python ADK Worker (Supervisor Agent)**: A background worker that pulls tasks from Pub/Sub. It leverages the **Google Agent Development Kit (ADK)** to start a high-level supervisor agent, which is instructed to orchestrate the evaluation. The supervisor invokes its primary tool, `evaluate_repository`, to delegate deep raw command testing.
-* **Sandbox Router & Gateway (GKE Control Plane)**: An internal control gateway that registers standard Sandbox Custom Resource Definitions (`SandboxClaims`, `SandboxTemplates`). It coordinates GKE networks to allocate and secure pods, returning connection streams back to worker clients.
+* **Sandbox Router (internal)**: A stateless reverse proxy in the `agent-sandbox-system` namespace. The worker agent claims a sandbox from the WarmPool through the Kubernetes API, then sends commands and file operations to the router, which forwards them to that sandbox pod. There is no public endpoint.
 * **Sandbox WarmPool**: To avoid long GKE container startup times ("cold starts" of 30+ seconds), the WarmPool maintains active standby pods. When a sandbox is claimed, the Router immediately maps it in sub-second times, then schedules recycling upon release.
 * **gVisor (runsc) Isolation**: A user-space virtual kernel that acts as a secure sandboxing boundary. It intercepts system calls from the container space to GKE node kernels, ensuring that dangerous raw commands (like system scripts or package setups) run under absolute virtualization isolation.
 * **FastAPI Sandbox Runtime**: A lightweight Python API server running inside the sandbox container. It exposes secure endpoints (`/execute`, `/upload`, `/download`) that allow external worker tools to manipulate files and trigger shell tasks.
