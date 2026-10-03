@@ -12,74 +12,364 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# A ClusterIP Service to provide a stable endpoint for the router pods.
-apiVersion: v1
-kind: Service
-metadata:
-  name: sandbox-router-svc
-  namespace: hackathon-judge
-spec:
-  type: ClusterIP
-  selector:
-    app: sandbox-router
-  ports:
-  - name: http
-    protocol: TCP
-    port: 8080 # The port the service will listen on
-    targetPort: 8080 # The port the router container listens on (from the sandbox_router/Dockerfile)
+# Vendored from kubernetes-sigs/agent-sandbox v1.0.4, sandbox-router/deploy/.
+# Local changes are marked with 'hackathon-judge:' comments.
 ---
-# The Deployment to manage and run the router pods.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-router
+  namespace: agent-sandbox-system
+  labels:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+---
+# RBAC for the sandbox-router's Pod-IP cache (KEP-NNNN fast path).
+#
+# The router watches sandbox-owned Pods so it can dial the live PodIP
+# instead of hitting cluster DNS on every request. Sandboxes can land
+# in any user namespace, so the informer needs get/list/watch on Pods
+# cluster-wide. If your deployment pins sandboxes to a single namespace,
+# narrow this to a Role + RoleBinding in that namespace and set
+# --cache-namespace=<ns> on the router.
+#
+# Skip these manifests entirely when running the router with
+# --cache-enabled=false (the DNS-only default).
+#
+# A note for auditors reading this grant:
+#
+#   The grant is "get/list/watch on Pods in every namespace", which on
+#   paper includes kube-system / kube-public / kube-node-lease. K8s RBAC
+#   has no negative-namespace primitive, so the grant cannot be
+#   expressed as "everywhere except the system namespaces."
+#
+#   At runtime, however, the informer issues its LIST/WATCH with the
+#   server-side label selector
+#
+#       agents.x-k8s.io/sandbox-name-hash
+#
+#   which the sandbox controller stamps on every sandbox-owned Pod (and
+#   nothing else). System-namespace Pods do not carry this label, so the
+#   apiserver never returns them and the router's cache never stores
+#   them. The grant is the upper bound on what the SA *could* read; the
+#   informer filter is what it actually does read.
+#
+#   If you need the grant itself to match the runtime behavior, the only
+#   options today are (a) per-namespace RoleBindings enumerated from
+#   your allow-list of tenant namespaces, or (b) a Kyverno / OPA
+#   admission policy that rejects list/watch on Pods from this SA in
+#   namespaces matching a deny pattern.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sandbox-router
+  labels:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+rules:
+# Pod read access for the informer cache. The cache uses a server-side
+# label selector to narrow the actual watch to sandbox-owned Pods (see
+# the header comment); the API permission grant itself cannot be
+# label-scoped.
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sandbox-router
+  labels:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sandbox-router
+subjects:
+- kind: ServiceAccount
+  name: sandbox-router
+  namespace: agent-sandbox-system
+#
+# The ClusterRoleBinding granting system:auth-delegator (needed for
+# --authz-mode=tokenreview) lives in a separate file —
+# rbac-tokenreview.yaml — so the default-mode deployment (which is
+# --authz-mode=allow-all) doesn't carry the broader create permissions
+# on tokenreviews.authentication.k8s.io and
+# subjectaccessreviews.authorization.k8s.io. Apply that file in
+# addition to this one only when you enable --authz-mode=tokenreview.
+---
+# Example Deployment for the Go sandbox-router. Tune the replica count and
+# resource requests for your tenant count and request rate — see the
+# "Scaling guidance" section of the package README.
+#
+# This example shows the plain-HTTP setup. For TLS, uncomment the TLS-related
+# arguments and volumes and see networkpolicy.yaml + the README's TLS section.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sandbox-router-deployment
-  namespace: hackathon-judge
+  name: sandbox-router
+  namespace: agent-sandbox-system
+  labels:
+    app: sandbox-router
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
 spec:
-  replicas: 2 # Run at least two replicas for high availability
+  # Minimum 2 for HA; tune up based on load test numbers.
+  replicas: 2
   selector:
     matchLabels:
-      app: sandbox-router
+      app.kubernetes.io/name: sandbox-router
+      app.kubernetes.io/component: sandbox-router
   template:
     metadata:
       labels:
         app: sandbox-router
+        app.kubernetes.io/name: sandbox-router
+        app.kubernetes.io/component: sandbox-router
+      annotations:
+        # Tell Prometheus to scrape the metrics port if you don't use a
+        # ServiceMonitor. Adjust or remove for your environment.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
-      # Ensure pods are spread across different zones for HA
+      serviceAccountName: sandbox-router
+      # Spread replicas across nodes/zones so a single failure doesn't take
+      # the router fleet offline.
       topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: sandbox-router
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: sandbox-router
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: sandbox-router
       containers:
-      - name: router
-        image: us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/sandbox-router:latest-main
-        # imagePullPolicy: Never  # Uncomment when using a locally loaded image (kind load / minikube image load)
-        env:
-        - name: PROXY_TIMEOUT_SECONDS
-          value: "600"
+      - name: sandbox-router
+        # Replace with the published image. The Go router image is
+        # `sandbox-router-go` to avoid colliding with the Python router's
+        # `sandbox-router` image — see sandbox-router/README.md.
+        # hackathon-judge: pinned to release tag
+        image: registry.k8s.io/agent-sandbox/sandbox-router-go:v1.0.4
+        imagePullPolicy: IfNotPresent
+        args:
+        - --http-bind-address=:8080
+        # Uncomment to enable TLS:
+        # - --https-bind-address=:8443
+        # - --tls-cert-file=/tls/tls.crt
+        # - --tls-key-file=/tls/tls.key
+        - --metrics-bind-address=:9090
+        - --health-probe-bind-address=:8081
+        - --cluster-domain=cluster.local
+        # hackathon-judge: judge runs take up to 10 minutes
+        - --proxy-timeout=600s
+        # Retry budget for upstream dial failures; see README "Behavior on
+        # missing sandboxes".
+        - --upstream-max-retries=3
+        # KEP-NNNN: enable the Pod-IP cache so requests carrying
+        # X-Sandbox-UID dial the live PodIP and bypass DNS. Requires
+        # the ClusterRole granted in rbac.yaml. Set to false (and skip
+        # rbac.yaml) to fall back to DNS-only routing.
+        - --cache-enabled=true
         ports:
-        - containerPort: 8080
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        - name: proxy
+          containerPort: 8080
+          protocol: TCP
+        # Uncomment to enable TLS:
+        # - name: proxy-tls
+        #   containerPort: 8443
+        #   protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        - name: healthz
+          containerPort: 8081
+          protocol: TCP
+        # Uncomment to enable TLS mounts:
+        # volumeMounts:
+        # - name: tls-certs
+        #   mountPath: /tls
+        #   readOnly: true
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8080
-          initialDelaySeconds: 10
+            port: healthz
+          initialDelaySeconds: 5
           periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: healthz
+          initialDelaySeconds: 1
+          periodSeconds: 5
+          failureThreshold: 2
         resources:
           requests:
-            cpu: "250m"
-            memory: "512Mi"
+            cpu: 250m
+            memory: 256Mi
           limits:
-            cpu: "1000m"
-            memory: "1Gi"
-      securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
+            cpu: "2"
+            memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+      # Uncomment to provide TLS certificates via Secret:
+      # volumes:
+      # - name: tls-certs
+      #   secret:
+      #     secretName: sandbox-router-tls
+      # Give in-flight requests a chance to finish before the kubelet
+      # delivers SIGKILL. The router's own --shutdown-timeout defaults to
+      # 30s; keep this slightly larger.
+      terminationGracePeriodSeconds: 45
+---
+# Service name matches the Python router's: existing Gateway/HTTPRoute
+# resources that point at `sandbox-router-svc` keep working when the Go
+# router is the backing deployment. See the package README for the
+# header contract clients use.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-router-svc
+  namespace: agent-sandbox-system
+  labels:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+  ports:
+  - name: proxy
+    port: 8080
+    targetPort: proxy
+    protocol: TCP
+  # Uncomment when --https-bind-address=:8443 is set on the router.
+  # - name: proxy-tls
+  #   port: 8443
+  #   targetPort: 8443
+  #   protocol: TCP
+---
+# Prevent voluntary disruptions (drain, autoscaler eviction) from taking
+# the entire router fleet offline. Tune for your replica count: with N
+# replicas, minAvailable: max(1, N-1) keeps you served during single-node
+# events while still allowing node drains.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sandbox-router
+  namespace: agent-sandbox-system
+  labels:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-router
+      app.kubernetes.io/component: sandbox-router
+---
+# Example NetworkPolicy. Adjust the ingress source — most deployments have
+# the router behind a Gateway in a specific namespace; tighten the from:
+# selector to that namespace + labels to prevent direct cluster-wide ingress.
+#
+# Egress is intentionally broad because the router dials arbitrary sandbox
+# pods in tenant namespaces — narrow it via labels if your tenancy model
+# constrains which pods/namespaces are valid targets.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-router
+  namespace: agent-sandbox-system
+  labels:
+    app.kubernetes.io/name: sandbox-router
+    app.kubernetes.io/component: sandbox-router
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-router
+      app.kubernetes.io/component: sandbox-router
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+  # Proxy traffic — replace this from: clause with your Gateway namespace.
+  # hackathon-judge: only the agent namespace may call the router.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: hackathon-judge
+    ports:
+    - protocol: TCP
+      port: 8080
+    # Uncomment when TLS is enabled:
+    # - protocol: TCP
+    #   port: 8443
+  # Metrics scrape — restrict to your monitoring namespace.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+  # Kubelet probes hit the pod IP directly; allow all.
+  - ports:
+    - protocol: TCP
+      port: 8081
+  egress:
+  # DNS for resolving sandbox FQDNs.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow forwarding to sandbox pods on the agreed sandbox port. Tighten
+  # via namespaceSelector/podSelector if your tenancy model permits.
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8888
+  # OTel collector (if --enable-tracing or --enable-otel-metrics). Tighten
+  # to your collector's namespace/pod selector.
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 4317
+  # Kubernetes API server — required when --cache-enabled or
+  # --authz-mode=tokenreview. The cache informer LIST/WATCHes Pods and
+  # the TokenReview authorizer POSTs to authentication.k8s.io. Without
+  # this rule, cache sync hangs and tokenreview every-request fails
+  # closed. The apiserver lives at the cluster-wide kubernetes service;
+  # NetworkPolicy can't name it directly, so we allow egress to the
+  # default namespace on the standard API port. Many clusters also
+  # accept apiserver traffic over the public LB IP — if your cluster
+  # routes that way, add an ipBlock for the LB CIDR alongside this
+  # rule. Skip this rule entirely when running with --cache-enabled=false
+  # AND --authz-mode=allow-all.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: default
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
