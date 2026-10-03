@@ -66,6 +66,15 @@ spec:
       port: 53
     - protocol: TCP
       port: 53
+  # NodeLocal DNSCache (GKE Autopilot sets it as the pod nameserver).
+  - to:
+    - ipBlock:
+        cidr: 169.254.20.10/32
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
   # GKE metadata server on Dataplane V2.
   - to:
     - ipBlock:
