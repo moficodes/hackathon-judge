@@ -183,7 +183,7 @@ kubectl get pods -n hackathon-judge -l app=sandbox
 ```
 
 > **Why we deploy the Sandbox WarmPool:**
-> Provisioning, scheduling, pulling images, and booting fresh container pods on-demand introduces substantial startup overhead (cold start times of 30+ seconds). The Sandbox WarmPool maintains a standby pool of active, pre-warmed sandbox pods (5 replicas by default). When the worker agent requests an evaluation environment, the Sandbox Router immediately allocates a running pre-warmed pod, cutting start-up delays to sub-second speeds.
+> Provisioning, scheduling, pulling images, and booting fresh container pods on-demand introduces substantial startup overhead (cold start times of 30+ seconds). The Sandbox WarmPool maintains a standby pool of active, pre-warmed sandbox pods (5 replicas by default). When the worker agent claims an evaluation environment, the Agent Sandbox controller binds the claim to a running pre-warmed pod, cutting start-up delays to sub-second speeds.
 
 ---
 
@@ -427,11 +427,11 @@ graph TD
     
     PubSubT -->|4. Pull Task| Worker
     Worker -->|5. Initialize ADK Agent| Worker
-    Worker -->|6. Request Secure Sandbox| Router
-    Router -->|7. Claim Pre-warmed Pod| WarmPool
-    Router -->|8. Establish Port-Forward Connection| Worker
+    Worker -->|6. Create SandboxClaim via K8s API| WarmPool
+    WarmPool -->|7. Bind Pre-warmed Pod to Claim| Sandbox
+    Worker -->|8. Send Requests with X-Sandbox Headers| Router
     
-    Worker -->|9. Clone Code & Write criteria.md| FastAPI
+    Router -->|9. Clone Code & Write criteria.md| FastAPI
     FastAPI -->|10. Store in Sandbox Filesystem| Code
     FastAPI -->|11. Execute Gemini CLI --yolo| GeminiCLI
     
@@ -441,8 +441,8 @@ graph TD
     GeminiCLI -->|15. Write evaluation.json| Code
     
     FastAPI -->|16. Read & Return JSON Report| Worker
-    Worker -->|17. Terminate Sandbox Pod| Router
-    Router -->|18. Garbage Collect & Rebuild| WarmPool
+    Worker -->|17. Delete SandboxClaim| WarmPool
+    WarmPool -->|18. Replenish Pre-warmed Pods| WarmPool
     Worker -->|19. Publish Scores to Results Queue| PubSubR
     
     PubSubR -->|20. Consume Result Event| API
@@ -458,7 +458,7 @@ graph TD
 * **Google Pub/Sub**: The message-oriented broker that holds task messages safely on-queue, orchestrating communication asynchronously between the API and active worker instances.
 * **Python ADK Worker (Supervisor Agent)**: A background worker that pulls tasks from Pub/Sub. It leverages the **Google Agent Development Kit (ADK)** to start a high-level supervisor agent, which is instructed to orchestrate the evaluation. The supervisor invokes its primary tool, `evaluate_repository`, to delegate deep raw command testing.
 * **Sandbox Router (internal)**: A stateless reverse proxy in the `agent-sandbox-system` namespace. The worker agent claims a sandbox from the WarmPool through the Kubernetes API, then sends commands and file operations to the router, which forwards them to that sandbox pod. There is no public endpoint.
-* **Sandbox WarmPool**: To avoid long GKE container startup times ("cold starts" of 30+ seconds), the WarmPool maintains active standby pods. When a sandbox is claimed, the Router immediately maps it in sub-second times, then schedules recycling upon release.
+* **Sandbox WarmPool**: To avoid long GKE container startup times ("cold starts" of 30+ seconds), the WarmPool maintains active standby pods. When the worker creates a SandboxClaim, the Agent Sandbox controller binds it to a pre-warmed pod in sub-second time, and refills the pool after the claim is deleted.
 * **gVisor (runsc) Isolation**: A user-space virtual kernel that acts as a secure sandboxing boundary. It intercepts system calls from the container space to GKE node kernels, ensuring that dangerous raw commands (like system scripts or package setups) run under absolute virtualization isolation.
 * **FastAPI Sandbox Runtime**: A lightweight Python API server running inside the sandbox container. It exposes secure endpoints (`/execute`, `/upload`, `/download`) that allow external worker tools to manipulate files and trigger shell tasks.
 * **Gemini CLI (`@google/gemini-cli`)**: An autonomous agent script installed inside the sandbox. When triggered with the developer environment runtime flag (`--yolo`), it uses a rigorous grading instruction sheet (`prompt.md`) and criteria definition (`criteria.md`) to:

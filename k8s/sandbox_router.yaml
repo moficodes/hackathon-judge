@@ -305,11 +305,15 @@ spec:
   policyTypes: ["Ingress", "Egress"]
   ingress:
   # Proxy traffic — replace this from: clause with your Gateway namespace.
-  # hackathon-judge: only the agent namespace may call the router.
+  # hackathon-judge: only the agent pods may call the router (not sandboxes,
+  # which share the namespace).
   - from:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: hackathon-judge
+      podSelector:
+        matchLabels:
+          app: agent
     ports:
     - protocol: TCP
       port: 8080
@@ -334,6 +338,15 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # hackathon-judge: GKE clusters using Cloud DNS resolve via the metadata server.
+  - to:
+    - ipBlock:
+        cidr: 169.254.169.254/32
     ports:
     - protocol: UDP
       port: 53
