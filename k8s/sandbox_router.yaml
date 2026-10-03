@@ -373,3 +373,14 @@ spec:
       port: 443
     - protocol: TCP
       port: 6443
+  # hackathon-judge: on GKE, kubernetes.default DNATs to the control-plane
+  # endpoint, which is outside the cluster's pod/service ranges and differs per
+  # cluster (public, private or PSC address), so the rule above never matches.
+  # The router is a trusted system component (it runs no untrusted code), so
+  # allow it TCP 443 to any address for the pod-IP cache informer.
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
