@@ -803,16 +803,16 @@ if [ "$RUN_K8S" = "true" ]; then
 
   log_info "Installing Agent Sandbox CRDs..."
 
-  VERSION=$(curl https://api.github.com/repos/kubernetes-sigs/agent-sandbox/releases/latest | jq -r '.tag_name')
+  # Pinned: upstream ships breaking changes; bump deliberately.
+  AGENT_SANDBOX_VERSION="v1.0.4"
+  AGENT_SANDBOX_RELEASE_URL="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}"
 
-  # Using v0.4.5 as determined by web research
-  if ! kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml; then
-    log_error "Failed to install Agent Sandbox CRDs."
+  if ! kubectl apply -f "${AGENT_SANDBOX_RELEASE_URL}/sandbox.yaml"; then
+    log_error "Failed to install Agent Sandbox core (${AGENT_SANDBOX_VERSION})."
     exit 1
   fi
-  # Using v0.4.5 as determined by web research
-  if ! kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml; then
-    log_error "Failed to install Agent Sandbox CRDs."
+  if ! kubectl apply -f "${AGENT_SANDBOX_RELEASE_URL}/extensions.yaml"; then
+    log_error "Failed to install Agent Sandbox extensions (${AGENT_SANDBOX_VERSION})."
     exit 1
   fi
 
@@ -863,7 +863,7 @@ if [ "$RUN_K8S" = "true" ]; then
   kubectl apply -f k8s/sandbox_router.yaml
 
   log_info "Waiting for Sandbox Router deployment to be ready..."
-  if ! kubectl rollout status deployment/sandbox-router-deployment -n hackathon-judge --timeout=300s; then
+  if ! kubectl rollout status deployment/sandbox-router -n agent-sandbox-system --timeout=300s; then
     log_error "Sandbox Router deployment failed to reach ready state within 5 minutes."
     exit 1
   fi
@@ -882,5 +882,5 @@ log_info "To view your Artifact Registry repository, visit:"
 echo "  https://console.cloud.google.com/artifacts/docker/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REGISTRY_LOCATION}/${ARTIFACT_REPO_NAME}"
 log_info "To view your GKE Autopilot cluster, visit:"
 echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOGLE_CLOUD_PROJECT}"
-log_info "The Sandbox Router is deployed and available at: sandbox-router-svc.hackathon-judge.svc.cluster.local"
+log_info "The Sandbox Router is deployed (internal only) at: sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080"
 echo -e "\n${BOLD}Ready to roll! 🚀${NC}\n"
