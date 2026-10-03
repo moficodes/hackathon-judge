@@ -167,11 +167,11 @@ spec:
         - --metrics-bind-address=:9090
         - --health-probe-bind-address=:8081
         - --cluster-domain=cluster.local
-        # hackathon-judge: judge runs take up to 10 minutes
-        - --proxy-timeout=600s
+        # hackathon-judge: judge runs take up to 10 minutes (agent timeout 600s + headroom)
+        - --proxy-timeout=660s
         # hackathon-judge: /execute only sends response headers when the command
         # finishes; the 30s default cut off judge runs with a 502.
-        - --response-header-timeout=600s
+        - --response-header-timeout=660s
         # Retry budget for upstream dial failures; see README "Behavior on
         # missing sandboxes".
         - --upstream-max-retries=3
