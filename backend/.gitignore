@@ -1,6 +1,7 @@
 *
 !/**/
 !*.*
+!Dockerfile
 
 bin/
 tmp/

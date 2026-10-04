@@ -731,8 +731,8 @@ fi
 # Wait for all parallel jobs to complete
 FAILURES=0
 for i in "${!PIDS[@]}"; do
-  wait "${PIDS[$i]}"
-  STATUS=$?
+  # Capture the exit code without tripping 'set -e', so every failed step is reported.
+  wait "${PIDS[$i]}" && STATUS=0 || STATUS=$?
   if [ $STATUS -eq 0 ]; then
     log_success "${RESULTS[$i]} configuration completed successfully."
   else
