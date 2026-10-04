@@ -2,8 +2,8 @@
 id: agent-sandbox-code-evaluation
 summary: Deploy a Hackathon Judge demo on GKE with Agent Sandbox.
 authors: Mofi Rahman, Lucia Subatin
-categories: GKE, Gemini CLI, Agent Sandbox
-tags: GKE, Gemini CLI, Agent Sandbox
+categories: GKE, Antigravity SDK, Agent Sandbox
+tags: GKE, Antigravity SDK, Agent Sandbox
 keywords: docType:Codelab,skill:Intermediate,language:Python,language:Go,category:Cloud,category:AiAndMachineLearning,product:GoogleKubernetesEngine,product:BigQuery
 
 ---
@@ -420,7 +420,7 @@ graph TD
     WarmPool["Sandbox WarmPool (Pre-warmed Pods)"]:::sandbox
     Sandbox["gVisor Secure Sandbox Pod"]:::sandbox
     FastAPI["FastAPI Runtime Server"]:::sandbox
-    GeminiCLI["Gemini CLI (Autonomous Sub-Agent)"]:::sandbox
+    Judge["Antigravity SDK Judge (Autonomous Sub-Agent)"]:::sandbox
     Code["Cloned Codebase & Tools"]:::sandbox
     BQ[("BigQuery Tables")]:::bq
     VertexAI["Vertex AI LLM Engine"]:::bq
@@ -439,12 +439,12 @@ graph TD
     
     Router -->|9. Clone Code & Write criteria.md| FastAPI
     FastAPI -->|10. Store in Sandbox Filesystem| Code
-    FastAPI -->|11. Execute Gemini CLI --yolo| GeminiCLI
+    FastAPI -->|11. Run python -m app.judge| Judge
     
-    GeminiCLI -->|12. Auto-Install & Build| Code
-    GeminiCLI -->|13. Run Unit/Functional Tests| Code
-    GeminiCLI -->|14. Call Vertex AI for Analysis| VertexAI
-    GeminiCLI -->|15. Write evaluation.json| Code
+    Judge -->|12. Auto-Install & Build| Code
+    Judge -->|13. Run Unit/Functional Tests| Code
+    Judge -->|14. Call Vertex AI for Analysis| VertexAI
+    Judge -->|15. Write evaluation.json| Code
     
     FastAPI -->|16. Read & Return JSON Report| Worker
     Worker -->|17. Delete SandboxClaim| WarmPool
@@ -468,16 +468,16 @@ graph TD
 * **gVisor (runsc) Isolation**: A user-space virtual kernel that acts as a secure sandboxing boundary. It intercepts system calls from the container space to GKE node kernels, ensuring that dangerous raw commands (like system scripts or package setups) run under absolute virtualization isolation.
 * **Sandbox Network Policy**: Network isolation for the sandbox pods. Only the Sandbox Router can connect in, and sandboxes can only connect out to cluster DNS, the GKE metadata server (for Workload Identity), and the public internet, so judged code cannot reach other pods or private addresses in your VPC.
 * **FastAPI Sandbox Runtime**: A lightweight Python API server running inside the sandbox container. It exposes secure endpoints (`/execute`, `/upload`, `/download`) that allow external worker tools to manipulate files and trigger shell tasks.
-* **Gemini CLI (`@google/gemini-cli`)**: An autonomous agent script installed inside the sandbox. When triggered with the developer environment runtime flag (`--yolo`), it uses a rigorous grading instruction sheet (`prompt.md`) and criteria definition (`criteria.md`) to:
-  - Dynamically analyze the codebase hierarchy (using tools like `tree` or `ripgrep`).
-  - Automatically install requirements (via commands like `npm install`, `pip install`, `go build`).
-  - Run real development tests (such as `npm test` or `pytest`) to verify functionality.
-  - Call Vertex AI models (via the container's Workload Identity binding credentials) to evaluate file logic, cross-check claims against the README, detect ghost features, log quality issues, and write a structured scorecard report to `evaluation.json`.
-* **Standard Developer Environments**: Bundles node, npm, yarn, pnpm, python, pip, uv, go, gh, git, tree, ripgrep, and playwright in the sandbox container image, giving the autonomous sub-agent a complete test workspace.
+* **Antigravity SDK Judge (`app/judge.py`)**: A small Python runner baked into the sandbox image. It uses the [Google Antigravity SDK](https://pypi.org/project/google-antigravity/) to run an autonomous agent, and the worker starts it with `uv run python -m app.judge`. The runner gives the agent the grading instruction sheet (`prompt.md`) as its system instructions, points it at the criteria definition (`criteria.md`), and auto-approves its shell and file tools because the gVisor sandbox is the safety boundary. The agent then:
+  - Dynamically analyzes the codebase hierarchy (using tools like `tree` or `ripgrep`).
+  - Automatically installs requirements (via commands like `npm install`, `pip install`, `go build`).
+  - Runs real development tests (such as `npm test` or `pytest`) to verify functionality.
+  - Calls Gemini on Vertex AI (via the container's Workload Identity binding credentials) to evaluate file logic, cross-check claims against the README, detect ghost features and log quality issues. It returns a structured scorecard that the SDK validates against a schema before the runner writes it to `evaluation.json`.
+* **Standard Developer Environments**: Bundles node, npm, yarn, pnpm, python, pip, uv, go, gh, git, tree, ripgrep, and playwright in the sandbox container image, giving the judge agent a complete test workspace.
 
 > aside positive
 > **Workload Identity security in action:**
-> Notice how the sandbox GKE Service Account (`hackathon-judge-sandbox-sa`) was granted the standard `roles/aiplatform.user` IAM permission during infrastructure setup. When the Gemini CLI inside the sandbox pod requests model responses from Vertex AI, GKE's Workload Identity automates key generation and credentials-checking under the hood! The container never stores static API keys or hardcoded cloud credentials, maintaining top-tier security guidelines automatically.
+> Notice how the sandbox GKE Service Account (`hackathon-judge-sandbox-sa`) was granted the standard `roles/aiplatform.user` IAM permission during infrastructure setup. When the Antigravity SDK judge inside the sandbox pod requests model responses from Vertex AI, GKE's Workload Identity automates key generation and credentials-checking under the hood! The container never stores static API keys or hardcoded cloud credentials, maintaining top-tier security guidelines automatically.
 
 ---
 
