@@ -42,23 +42,16 @@ Execution Steps:
 5. Build the project if applicable
 6. Run the project locally
 
-Output Specification:
-Write your final evaluation strictly as a valid JSON object directly to `evaluation.json`. Do not include any markdown formatting wrappers (like ```json) inside the file itself. 
-
-The JSON must strictly adhere to this schema:
-{
-"scores": [
-{
-    "name": "String (The specific criteria name from criteria.md)",
-    "score": "Number (Based on the criteria scale, e.g., 1-10 or 1-5)",
-    "reasoning": "String (Detailed critique. MUST include explicit file paths, function names, or line numbers verifying or refuting claims. Document test execution results here.)"
-}
-],
-"total_score": "Number (The sum or calculated average as dictated by criteria.md)",
-"overall_comments": "String (A holistic summary of the project's engineering quality, documentation accuracy, and overall execution.)",
-"confidence_score": "Number (Scale of 0.0 to 1.0, reflecting how confidently you were able to review, build, or verify the codebase based on available files/tests.)"
-}
+Output:
+When you have finished, return your evaluation as your final structured result. Field guidance:
+- scores: one entry per criterion in criteria.md. "name" is the criterion name exactly as written, "score" follows that criterion's scale (for example 1-10 or 1-5), and "reasoning" is a detailed critique that MUST cite explicit file paths, function names, or line numbers verifying or refuting claims, and document test execution results.
+- total_score: the sum or calculated average as dictated by criteria.md.
+- overall_comments: a holistic summary of the project's engineering quality, documentation accuracy, and overall execution.
+- confidence_score: 0.0 to 1.0, reflecting how confidently you were able to review, build, or verify the codebase based on available files/tests.
 """
+
+JUDGE_COMMAND = "uv run python -m app.judge"
+JUDGE_COMMAND_TIMEOUT_SECONDS = 600
 
 def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     """
@@ -91,11 +84,11 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
         # Write criteria to markdown file
         sandbox.files.write('criteria.md', judging_criteria)
         
-        safe_prompt = shlex.quote(SANDBOX_PROMPT)
-        
-        sandbox.files.write('prompt.md', safe_prompt)
-        prompt = 'gemini --yolo -p "Use @criteria.md as a guide and follow @prompt.md for the prompt. Make sure the output is in JSON format and written to evaluation.json"'
-        sandbox.commands.run(prompt, timeout=600)
+        sandbox.files.write('prompt.md', SANDBOX_PROMPT)
+        result = sandbox.commands.run(JUDGE_COMMAND, timeout=JUDGE_COMMAND_TIMEOUT_SECONDS)
+        if result.exit_code != 0:
+            stderr_tail = (result.stderr or "").strip()[-2000:]
+            raise RuntimeError(f"judge exited with code {result.exit_code}: {stderr_tail}")
         result_json = sandbox.files.read('evaluation.json')
         return result_json
     except Exception as e:

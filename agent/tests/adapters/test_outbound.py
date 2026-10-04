@@ -13,6 +13,7 @@
 # limitations under the License.
 
 # tests/adapters/test_outbound.py
+import json
 import pytest
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -99,7 +100,10 @@ async def test_evaluate_repository_execution(mock_get_sandbox_client):
     assert "total_score" in result
     mock_client.create_sandbox.assert_called_once_with(warmpool="test-pool", namespace="test-ns")
     mock_sandbox.commands.run.assert_any_call("git clone https://github.com/test/repo repo")
+    from src.adapters.outbound.shared_sandbox import SANDBOX_PROMPT
     mock_sandbox.files.write.assert_any_call("criteria.md", "# Criteria")
+    mock_sandbox.files.write.assert_any_call("prompt.md", SANDBOX_PROMPT)
+    mock_sandbox.commands.run.assert_any_call("uv run python -m app.judge", timeout=600)
     mock_sandbox.files.read.assert_called_once_with("evaluation.json")
     mock_sandbox.terminate.assert_called_once()
 
@@ -145,3 +149,36 @@ def test_evaluate_repository_requires_warmpool():
         from src.adapters.outbound.shared_sandbox import evaluate_repository
         with pytest.raises(ValueError, match="SANDBOX_WARMPOOL environment variable is required"):
             evaluate_repository("https://github.com/test/repo", "# Criteria")
+
+
+@patch('src.adapters.outbound.shared_sandbox.get_sandbox_client')
+def test_evaluate_repository_judge_failure_returns_error(mock_get_sandbox_client):
+    mock_client = MagicMock()
+    mock_get_sandbox_client.return_value = mock_client
+    mock_sandbox = MagicMock()
+    mock_client.create_sandbox = MagicMock(return_value=mock_sandbox)
+
+    def run(command, timeout=60):
+        if command.startswith("git clone"):
+            return MagicMock(exit_code=0, stdout="", stderr="")
+        return MagicMock(exit_code=3, stdout="", stderr="noise\njudge: timed out after 540s\n")
+
+    mock_sandbox.commands.run = MagicMock(side_effect=run)
+
+    with patch.dict('os.environ', {'SANDBOX_WARMPOOL': 'test-pool', 'SANDBOX_NAMESPACE': 'test-ns'}):
+        from src.adapters.outbound.shared_sandbox import evaluate_repository
+        result = json.loads(evaluate_repository("https://github.com/test/repo", "# Criteria"))
+
+    assert "error" in result
+    assert "exited with code 3" in result["error"]
+    assert "judge: timed out after 540s" in result["error"]
+    mock_sandbox.files.read.assert_not_called()
+    mock_sandbox.terminate.assert_called_once()
+
+
+def test_sandbox_prompt_does_not_ask_model_to_write_files():
+    from src.adapters.outbound.shared_sandbox import SANDBOX_PROMPT
+    assert "evaluation.json" not in SANDBOX_PROMPT
+    assert "@criteria.md" not in SANDBOX_PROMPT
+    for field in ("scores", "total_score", "overall_comments", "confidence_score"):
+        assert field in SANDBOX_PROMPT
