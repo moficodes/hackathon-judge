@@ -140,3 +140,111 @@ func TestCheckStuckEvaluations(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "SUCCESS", e.Status)
 }
+
+func TestAddEvaluationPersistsWeightAndMaxScore(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+
+	err := svc.AddEvaluation(domain.Evaluation{
+		ID:        "e-weights",
+		ProjectID: "p1",
+		Criteria: []domain.CriteriaScore{
+			{Name: "Technical Execution", Score: 4}, // standard: weight 0.25, max 5
+			{Name: "Clean Code", Score: 1},          // bonus: weight 2, max 2
+			{Name: "Not A Criterion", Score: 3},     // unknown: weight 0, max 0
+		},
+	})
+	assert.NoError(t, err)
+
+	e, err := repo.GetEvaluationByID("e-weights")
+	assert.NoError(t, err)
+	assert.Equal(t, 0.25, e.Criteria[0].Weight)
+	assert.Equal(t, 5.0, e.Criteria[0].MaxScore)
+	assert.Equal(t, 2.0, e.Criteria[1].Weight)
+	assert.Equal(t, 2.0, e.Criteria[1].MaxScore)
+	assert.Equal(t, 0.0, e.Criteria[2].Weight)
+	assert.Equal(t, 0.0, e.Criteria[2].MaxScore)
+}
+
+func saveRunningEval(t *testing.T, repo interface{ Save(domain.Evaluation) error }, id string) {
+	t.Helper()
+	assert.NoError(t, repo.Save(domain.Evaluation{
+		ID: id, ProjectID: "p1", JudgeID: "sandbox", Status: "RUNNING", CreatedAt: time.Now(),
+	}))
+}
+
+func TestSaveJudgingResultSuccessUpdatesEvaluationAndProjectScore(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+	saveRunningEval(t, repo, "tsk_1")
+
+	err := svc.SaveJudgingResult(domain.JudgingResult{
+		TaskID: "tsk_1",
+		Status: "success",
+		Scores: []domain.CriteriaScore{
+			{Name: "Innovation & Originality", Score: 4, Weight: 0.2},
+			{Name: "Technical Execution", Score: 5, Weight: 0.25},
+		},
+		OverallComments: "Solid work",
+	})
+	assert.NoError(t, err)
+
+	e, err := repo.GetEvaluationByID("tsk_1")
+	assert.NoError(t, err)
+	assert.Equal(t, "SUCCESS", e.Status)
+	assert.Equal(t, "Solid work", e.Comment)
+	assert.Len(t, e.Criteria, 2)
+	assert.InDelta(t, 2.05, e.TotalScore, 0.0001)
+
+	p, err := svc.GetProject("p1")
+	assert.NoError(t, err)
+	assert.InDelta(t, 2.05, p.Score, 0.0001)
+}
+
+func TestSaveJudgingResultAveragesOnlySuccessfulEvaluations(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+	saveRunningEval(t, repo, "tsk_a")
+	saveRunningEval(t, repo, "tsk_b")
+	saveRunningEval(t, repo, "tsk_still_running")
+
+	assert.NoError(t, svc.SaveJudgingResult(domain.JudgingResult{
+		TaskID: "tsk_a", Status: "success",
+		Scores: []domain.CriteriaScore{{Name: "Technical Execution", Score: 4, Weight: 0.25}},
+	}))
+	assert.NoError(t, svc.SaveJudgingResult(domain.JudgingResult{
+		TaskID: "tsk_b", Status: "success",
+		Scores: []domain.CriteriaScore{{Name: "Technical Execution", Score: 2, Weight: 0.25}},
+	}))
+
+	p, err := svc.GetProject("p1")
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.75, p.Score, 0.0001) // (1.0 + 0.5) / 2, RUNNING eval ignored
+}
+
+func TestSaveJudgingResultErrorMarksFailed(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+	saveRunningEval(t, repo, "tsk_err")
+	msg := "git clone failed"
+
+	err := svc.SaveJudgingResult(domain.JudgingResult{TaskID: "tsk_err", Status: "error", ErrorMessage: &msg})
+	assert.NoError(t, err)
+
+	e, err := repo.GetEvaluationByID("tsk_err")
+	assert.NoError(t, err)
+	assert.Equal(t, "FAILED", e.Status)
+	assert.Equal(t, "git clone failed", e.Comment)
+
+	p, err := svc.GetProject("p1")
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, p.Score)
+}
+
+func TestSaveJudgingResultUnknownTask(t *testing.T) {
+	repo := repository.NewMemoryRepo()
+	svc := service.NewHackathonService(repo, repo, repo, nil)
+
+	err := svc.SaveJudgingResult(domain.JudgingResult{TaskID: "tsk_missing", Status: "success"})
+	assert.ErrorContains(t, err, "tsk_missing")
+}
