@@ -182,3 +182,31 @@ def test_sandbox_prompt_does_not_ask_model_to_write_files():
     assert "@criteria.md" not in SANDBOX_PROMPT
     for field in ("scores", "total_score", "overall_comments", "confidence_score"):
         assert field in SANDBOX_PROMPT
+
+
+@patch('src.adapters.outbound.shared_sandbox.get_sandbox_client')
+def test_evaluate_repository_clone_failure_skips_judge(mock_get_sandbox_client):
+    mock_client = MagicMock()
+    mock_get_sandbox_client.return_value = mock_client
+    mock_sandbox = MagicMock()
+    mock_client.create_sandbox = MagicMock(return_value=mock_sandbox)
+    mock_sandbox.commands.run = MagicMock(
+        return_value=MagicMock(exit_code=128, stdout="", stderr="fatal: repository not found\n")
+    )
+
+    with patch.dict('os.environ', {'SANDBOX_WARMPOOL': 'test-pool', 'SANDBOX_NAMESPACE': 'test-ns'}):
+        from src.adapters.outbound.shared_sandbox import evaluate_repository
+        result = json.loads(evaluate_repository("https://github.com/test/repo", "# Criteria"))
+
+    assert "git clone failed (exit 128)" in result["error"]
+    assert "repository not found" in result["error"]
+    assert mock_sandbox.commands.run.call_count == 1
+    mock_sandbox.files.write.assert_not_called()
+    mock_sandbox.terminate.assert_called_once()
+
+
+def test_sandbox_prompt_asks_for_repo_relative_paths_and_bounded_commands():
+    from src.adapters.outbound.shared_sandbox import SANDBOX_PROMPT
+    assert "relative to the repository root" in SANDBOX_PROMPT
+    assert "file://" in SANDBOX_PROMPT  # named as forbidden
+    assert "3 minutes" in SANDBOX_PROMPT

@@ -25,8 +25,10 @@ class CriterionScore(BaseModel):
     score: float = Field(description="Score on the criterion's scale, e.g. 1-10 or 1-5.")
     reasoning: str = Field(
         description=(
-            "Detailed critique citing explicit file paths, function names or line numbers, "
-            "including the results of any builds or tests you ran."
+            "Detailed critique citing file paths relative to the repository root "
+            "(e.g. src/App.tsx:42-43), function names or line numbers, including the results "
+            "of any builds or tests you ran. Plain text paths only: no markdown links, "
+            "file:// URIs or absolute /home/sandbox paths."
         )
     )
 

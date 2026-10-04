@@ -42,9 +42,11 @@ Execution Steps:
 5. Build the project if applicable
 6. Run the project locally
 
+Shell commands time out after 3 minutes. To check that a server starts, run it with a time limit (for example: timeout 30 npm start) instead of leaving it running.
+
 Output:
 When you have finished, return your evaluation as your final structured result. Field guidance:
-- scores: one entry per criterion in criteria.md. "name" is the criterion name exactly as written, "score" follows that criterion's scale (for example 1-10 or 1-5), and "reasoning" is a detailed critique that MUST cite explicit file paths, function names, or line numbers verifying or refuting claims, and document test execution results.
+- scores: one entry per criterion in criteria.md. "name" is the criterion name exactly as written, "score" follows that criterion's scale (for example 1-10 or 1-5), and "reasoning" is a detailed critique that MUST cite explicit file paths, function names, or line numbers verifying or refuting claims, and document test execution results. Write file references as plain text paths relative to the repository root, for example src/App.tsx:42-43 or server/main.go (function handleLogin). Do not use markdown links, file:// URIs, or absolute paths such as /home/sandbox/app/repo/...
 - total_score: the sum or calculated average as dictated by criteria.md.
 - overall_comments: a holistic summary of the project's engineering quality, documentation accuracy, and overall execution.
 - confidence_score: 0.0 to 1.0, reflecting how confidently you were able to review, build, or verify the codebase based on available files/tests.
@@ -80,7 +82,10 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     try:
         # Clone the repo
         safe_url = shlex.quote(github_url)
-        sandbox.commands.run(f"git clone {safe_url} repo")
+        clone = sandbox.commands.run(f"git clone {safe_url} repo")
+        if clone.exit_code != 0:
+            stderr_tail = (clone.stderr or "").strip()[-500:]
+            raise RuntimeError(f"git clone failed (exit {clone.exit_code}): {stderr_tail}")
         # Write criteria to markdown file
         sandbox.files.write('criteria.md', judging_criteria)
         
