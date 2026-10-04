@@ -45,6 +45,9 @@ spec:
           value: "true"
         - name: SANDBOX_DIR
           value: "/home/sandbox/app"
+        # Optional Antigravity SDK model override for the judge; empty uses the SDK default.
+        - name: JUDGE_MODEL
+          value: ""
         resources:
           limits:
             memory: "4Gi"

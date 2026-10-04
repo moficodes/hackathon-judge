@@ -28,7 +28,6 @@ ENV NODE_VERSION=24.15.0
 ENV PYTHON_VERSION=3.14.4
 ENV GO_PATH=/usr/local/go
 ENV SANDBOX_DIR=/home/sandbox/app
-ENV GEMINI_CLI_TRUST_WORKSPACE=true
 ENV PATH=$PATH:$GO_PATH/bin:/home/sandbox/.local/bin
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/lib/playwright
 
@@ -97,9 +96,6 @@ RUN npx playwright install chromium
 # Copy Go from builder
 COPY --from=builder /usr/local/go /usr/local/go
 
-# Install Gemini CLI
-RUN npm install -g @google/gemini-cli
-
 # Copy uv binary from official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -130,7 +126,7 @@ RUN node --version && \
     tree --version && \
     uv --version && \
     npx playwright --version && \
-    gemini --version
+    uv run python -c "import google.antigravity; print('google-antigravity OK')"
 
 # Default command: Start the FastAPI server using uv run
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8888"]
