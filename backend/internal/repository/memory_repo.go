@@ -149,13 +149,3 @@ func (r *memoryRepo) GetProjectByID(id string) (domain.Project, error) {
 	}
 	return domain.Project{}, errors.New("project not found")
 }
-
-func (r *memoryRepo) JudgeProjectWithBQ(projectID string, evaluationID string) ([]domain.CriteriaScore, error) {
-	return []domain.CriteriaScore{
-		{Name: "Innovation & Originality", Score: 4.5, Reasoning: "Excellent innovation", MaxScore: 5.0, Weight: 0.2},
-		{Name: "Theme Alignment (Impact)", Score: 4.0, Reasoning: "Solid theme alignment", MaxScore: 5.0, Weight: 0.25},
-		{Name: "Technical Execution", Score: 4.0, Reasoning: "Solid technical execution", MaxScore: 5.0, Weight: 0.25},
-		{Name: "User Experience (UX/UI)", Score: 5.0, Reasoning: "Great UX/UI", MaxScore: 5.0, Weight: 0.2},
-		{Name: "Pitch & Demo", Score: 4.5, Reasoning: "Clear demo", MaxScore: 5.0, Weight: 0.1},
-	}, nil
-}

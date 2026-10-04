@@ -23,14 +23,11 @@ import type { Project, Evaluation, Hackathon } from '../types/models';
 function ProjectCard({ project }: { project: Project }) {
   const { data: evaluations, mutate } = useSWR<Evaluation[]>(`/api/projects/${project.id}/evaluations`, fetcher);
   const [isTriggeringAgent, setIsTriggeringAgent] = useState(false);
-  const [isTriggeringBQ, setIsTriggeringBQ] = useState(false);
   const [judgeMessage, setJudgeMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
 
   const isAgentRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'sandbox');
-  const isBQRunning = evaluations?.some(e => e.status === 'RUNNING' && e.judge_id === 'BQ AI Function');
   const hasAgentEvaluations = evaluations?.some(e => e.judge_id === 'sandbox');
-  const hasBQEvaluations = evaluations?.some(e => e.judge_id === 'BQ AI Function');
-  const isRunning = isAgentRunning || isBQRunning;
+  const isRunning = isAgentRunning;
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -62,26 +59,6 @@ function ProjectCard({ project }: { project: Project }) {
     }
   };
 
-  const handleJudgeBQ = async () => {
-    if (hasBQEvaluations && !window.confirm('BQ evaluations already exist for this project. Are you sure you want to run another evaluation?')) {
-      return;
-    }
-
-    setIsTriggeringBQ(true);
-    setJudgeMessage(null);
-    try {
-      const response = await fetch(`/api/projects/${project.id}/judge/bq`, { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to start judging');
-      setJudgeMessage({ text: 'BQ AI judging task started!', type: 'success' });
-      setTimeout(() => mutate(), 1000);
-    } catch {
-      setJudgeMessage({ text: 'Error starting judging', type: 'error' });
-    } finally {
-      setIsTriggeringBQ(false);
-      setTimeout(() => setJudgeMessage(null), 3000);
-    }
-  };
-
   return (
     <div className="border border-slate-200 rounded-lg p-4 bg-white hover:border-blue-600 transition-colors shadow-sm">
       <h3 className="text-xl font-semibold mb-2">{project.title}</h3>
@@ -106,16 +83,6 @@ function ProjectCard({ project }: { project: Project }) {
           >
             {isTriggeringAgent ? '...' : isAgentRunning ? 'Running...' : hasAgentEvaluations ? 'Rerun Agent' : 'Run Agent'}
           </button>
-          <button
-            onClick={handleJudgeBQ}
-            disabled={isTriggeringBQ || isBQRunning}
-            className={`flex-1 border px-3 py-2 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm ${
-              isBQRunning ? 'border-yellow-600 bg-yellow-600 text-white' : 
-              'border-green-600 bg-green-600 text-white hover:bg-green-700'
-            }`}
-          >
-            {isTriggeringBQ ? '...' : isBQRunning ? 'Running...' : hasBQEvaluations ? 'Rerun BQ' : 'Run BQ'}
-          </button>
         </div>
         {judgeMessage && (
           <p className={`text-xs mt-1 ${judgeMessage.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
@@ -130,32 +97,14 @@ function ProjectCard({ project }: { project: Project }) {
 export default function HackathonDetail() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<'projects' | 'criteria'>('projects');
-  const [isBulkJudging, setIsBulkJudging] = useState(false);
   
   const { data: hackathon, error: hackathonError, isLoading: isHackathonLoading } = useSWR<Hackathon>(id ? `/api/hackathons/${id}` : null, fetcher);
-  const { data: projects, error: projectsError, isLoading: isProjectsLoading, mutate: mutateProjects } = useSWR<Project[]>(id ? `/api/hackathons/${id}/projects` : null, fetcher);
+  const { data: projects, error: projectsError, isLoading: isProjectsLoading } = useSWR<Project[]>(id ? `/api/hackathons/${id}/projects` : null, fetcher);
 
   if (isHackathonLoading || isProjectsLoading) return <div className="p-4">Loading details...</div>;
   if (hackathonError) return <div className="p-4 text-red-500">Failed to load hackathon details.</div>;
   if (projectsError) return <div className="p-4 text-red-500">Failed to load projects.</div>;
 
-  const handleJudgeAll = async () => {
-    if (!projects || projects.length === 0) return;
-    if (!window.confirm(`Are you sure you want to run BQ AI Judging for all ${projects.length} projects?`)) {
-      return;
-    }
-
-    setIsBulkJudging(true);
-    try {
-      await Promise.all(projects.map(p => fetch(`/api/projects/${p.id}/judge/bq`, { method: 'POST' })));
-      alert('Started judging for all projects!');
-      setTimeout(() => mutateProjects(), 1000);
-    } catch {
-      alert('Error starting batch judging');
-    } finally {
-      setIsBulkJudging(false);
-    }
-  };
   
   return (
     <div className="p-4">
@@ -168,13 +117,6 @@ export default function HackathonDetail() {
                 <h2 className="text-3xl font-bold mb-2">{hackathon.title}</h2>
                 <p className="text-gray-500 mb-4">{new Date(hackathon.date).toLocaleDateString()} &middot; Status: <span className="font-medium text-slate-700 uppercase text-sm tracking-wide">{hackathon.status}</span></p>
               </div>
-              <button
-                onClick={handleJudgeAll}
-                disabled={isBulkJudging || !projects || projects.length === 0}
-                className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBulkJudging ? 'Starting Batch...' : 'Judge All Projects (BQ AI)'}
-              </button>
             </div>
             <div className="prose max-w-none text-gray-700">
               <p className="font-semibold text-lg mb-2">Goal:</p>

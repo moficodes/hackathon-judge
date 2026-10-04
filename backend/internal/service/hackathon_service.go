@@ -16,6 +16,7 @@ package service
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,7 +30,6 @@ type HackathonService interface {
 	GetProject(id string) (domain.Project, error)
 	AddEvaluation(eval domain.Evaluation) error
 	ListEvaluationsByProject(projectID string) ([]domain.Evaluation, error)
-	TriggerJudging(projectID string, useBQ bool) (string, error)
 	TriggerJudgingAgent(projectID string) (string, error)
 }
 
@@ -38,10 +38,53 @@ type hackathonService struct {
 	projectRepo domain.ProjectRepository
 	evalRepo    domain.EvaluationRepository
 	publisher   domain.TaskPublisher
+	scoreMu     sync.Mutex
 }
 
 func NewHackathonService(repo domain.HackathonRepository, projectRepo domain.ProjectRepository, evalRepo domain.EvaluationRepository, publisher domain.TaskPublisher) HackathonService {
-	return &hackathonService{repo: repo, projectRepo: projectRepo, evalRepo: evalRepo, publisher: publisher}
+	s := &hackathonService{repo: repo, projectRepo: projectRepo, evalRepo: evalRepo, publisher: publisher}
+	s.startWatchdog(5*time.Minute, 15*time.Minute)
+	return s
+}
+
+func (s *hackathonService) startWatchdog(interval, timeout time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			s.checkStuckEvaluations(timeout)
+		}
+	}()
+}
+
+func (s *hackathonService) checkStuckEvaluations(timeout time.Duration) {
+	hackathons, err := s.repo.GetAll()
+	if err != nil {
+		fmt.Printf("watchdog: failed to get hackathons: %v\n", err)
+		return
+	}
+	for _, h := range hackathons {
+		projects, err := s.projectRepo.GetByHackathonID(h.ID)
+		if err != nil {
+			fmt.Printf("watchdog: failed to get projects for hackathon %s: %v\n", h.ID, err)
+			continue
+		}
+		for _, p := range projects {
+			evals, err := s.evalRepo.GetByProjectID(p.ID)
+			if err != nil {
+				fmt.Printf("watchdog: failed to get evaluations for project %s: %v\n", p.ID, err)
+				continue
+			}
+			for _, e := range evals {
+				if e.Status == "RUNNING" && time.Since(e.CreatedAt) > timeout {
+					e.Status = "FAILED"
+					e.Comment = fmt.Sprintf("Evaluation timed out after %d minutes", int(timeout.Minutes()))
+					if err := s.evalRepo.Update(e); err != nil {
+						fmt.Printf("watchdog: failed to update evaluation %s: %v\n", e.ID, err)
+					}
+				}
+			}
+		}
+	}
 }
 
 func (s *hackathonService) ListHackathons() ([]domain.Hackathon, error) {
@@ -115,6 +158,9 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 	}
 	eval.TotalScore = evalTotal
 
+	s.scoreMu.Lock()
+	defer s.scoreMu.Unlock()
+
 	if err := s.evalRepo.Save(eval); err != nil {
 		return err
 	}
@@ -133,7 +179,7 @@ func (s *hackathonService) AddEvaluation(eval domain.Evaluation) error {
 	return s.projectRepo.UpdateScore(eval.ProjectID, average)
 }
 
-func (s *hackathonService) TriggerJudging(projectID string, useBQ bool) (string, error) {
+func (s *hackathonService) TriggerJudgingAgent(projectID string) (string, error) {
 	// Fetch project
 	project, err := s.projectRepo.GetProjectByID(projectID)
 	if err != nil {
@@ -153,86 +199,16 @@ func (s *hackathonService) TriggerJudging(projectID string, useBQ bool) (string,
 
 	taskID := "tsk_" + uuid.New().String()
 
-	judgeID := "sandbox"
-	isBQ := false
-
-	type bqScorer interface {
-		JudgeProjectWithBQ(projectID string, evaluationID string) ([]domain.CriteriaScore, error)
-	}
-
-	var bqRepo bqScorer
-	if useBQ {
-		if r, ok := s.evalRepo.(bqScorer); ok {
-			bqRepo = r
-			judgeID = "BQ AI Function"
-			isBQ = true
-		}
-	}
-
 	// Save RUNNING evaluation
 	eval := domain.Evaluation{
 		ID:        taskID,
 		ProjectID: projectID,
-		JudgeID:   judgeID,
+		JudgeID:   "sandbox",
 		Status:    "RUNNING",
 		CreatedAt: time.Now(),
 	}
 	if err := s.evalRepo.Save(eval); err != nil {
 		return "", fmt.Errorf("failed to save running evaluation: %w", err)
-	}
-
-	if isBQ {
-		go func() {
-			scores, err := bqRepo.JudgeProjectWithBQ(projectID, taskID)
-
-			eval, getErr := s.evalRepo.GetEvaluationByID(taskID)
-			if getErr != nil {
-				fmt.Printf("Error: failed to fetch active evaluation task %s: %v\n", taskID, getErr)
-				return
-			}
-
-			if err != nil {
-				eval.Status = "FAILED"
-				eval.Comment = fmt.Sprintf("BigQuery AI scoring failed: %v", err)
-			} else {
-				eval.Status = "SUCCESS"
-				eval.Criteria = scores
-
-				// Calculate average score based on criteria weights
-				var evalTotal float64
-				for _, cs := range scores {
-					evalTotal += cs.Score * cs.Weight
-				}
-				eval.TotalScore = evalTotal
-				eval.Comment = "Automated BigQuery AI evaluation completed successfully"
-			}
-
-			if updateErr := s.evalRepo.Update(eval); updateErr != nil {
-				fmt.Printf("Error: failed to update evaluation %s: %v\n", taskID, updateErr)
-				return
-			}
-
-			if eval.Status == "SUCCESS" {
-				// Recalculate average project score
-				evals, err := s.evalRepo.GetByProjectID(projectID)
-				if err == nil {
-					var total float64
-					var count int
-					for _, e := range evals {
-						if e.Status == "SUCCESS" {
-							total += e.TotalScore
-							count++
-						}
-					}
-					if count > 0 {
-						average := total / float64(count)
-						s.projectRepo.UpdateScore(projectID, average)
-					}
-				}
-			}
-		}()
-
-		return taskID, nil
 	}
 
 	// Pub/Sub tasks publishing
@@ -255,8 +231,4 @@ func (s *hackathonService) TriggerJudging(projectID string, useBQ bool) (string,
 	}
 
 	return taskID, nil
-}
-
-func (s *hackathonService) TriggerJudgingAgent(projectID string) (string, error) {
-	return s.TriggerJudging(projectID, false)
 }
