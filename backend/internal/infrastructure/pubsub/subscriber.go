@@ -48,14 +48,17 @@ func (s *GoogleResultSubscriber) Start(ctx context.Context, handle func(domain.J
 	return s.sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
 		var result domain.JudgingResult
 		if err := json.Unmarshal(msg.Data, &result); err != nil {
-			log.Printf("Failed to unmarshal judging result: %v", err)
-			msg.Nack()
+			// Malformed messages will never parse; ack so they aren't redelivered forever.
+			log.Printf("Failed to unmarshal judging result, dropping message %s: %v", msg.ID, err)
+			msg.Ack()
 			return
 		}
 
 		if err := handle(result); err != nil {
-			log.Printf("Failed to handle judging result: %v", err)
-			msg.Nack()
+			// Nack would redeliver indefinitely (e.g. for an unknown task ID); the
+			// evaluation watchdog marks anything left RUNNING as FAILED instead.
+			log.Printf("Failed to handle judging result, dropping message %s: %v", msg.ID, err)
+			msg.Ack()
 			return
 		}
 
