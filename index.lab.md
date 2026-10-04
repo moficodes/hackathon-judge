@@ -19,7 +19,7 @@ The platform is designed to automate the process of reviewing, testing, and grad
 
 ### What you'll do
 - Provision the target Google Cloud services and establish target APIs.
-- Initialize GKE Autopilot and install the Agent Sandbox CRDs, cluster configurations, and the Sandbox Router.
+- Initialize GKE Autopilot and install the Agent Sandbox controller and CRDs, cluster configurations, and the internal Sandbox Router.
 - Apply the Sandbox Network Policy, Sandbox Template, and a Sandbox WarmPool.
 - Deploy the REST Backend API, ADK Judging worker Agent, and React Frontend UI.
 - Wire external load-balanced routing and access the platform to run secure, sandboxed judging workflows.
@@ -119,10 +119,10 @@ The script creates the `hackathon_judge` dataset, applies structural SQL databas
 #### 8. Triggering Container Builds using Cloud Build
 The script triggers the `cloudbuild.yaml` definition to compile our React UI, Go REST server, Python ADK worker, and FastAPI sandbox, packaging them into isolated container images tagged with the active repository Git commit SHA and saving them to Artifact Registry.
 
-#### 9. Registering Agent Sandbox Custom Resource Definitions (CRDs)
+#### 9. Installing Agent Sandbox (Controller and CRDs)
 The script installs a pinned release (`v1.0.4`) of the Kubernetes-sigs Agent Sandbox controller and Custom Resource Definitions (`sandbox.yaml` and `extensions.yaml`) to extend GKE's core capabilities.
 > **Why we install the Agent Sandbox infrastructure:**
-> Standard Kubernetes clusters lack support for allocating protected on-demand sandboxes. Registering Agent Sandbox CRDs extends GKE's control plane, enabling Kubernetes to natively orchestrate secure sandboxed micro-containers using Custom Resources (like SandboxTemplates and SandboxClaims).
+> Standard Kubernetes clusters lack support for allocating protected on-demand sandboxes. Agent Sandbox adds Custom Resources (Sandboxes, SandboxTemplates, SandboxWarmPools, and SandboxClaims) and a controller, running in the `agent-sandbox-system` namespace, that turns them into isolated sandbox pods.
 
 #### 10. Configuring Namespaces, Service Accounts, and Workload Identity
 The script provisions the `hackathon-judge` namespace, registers Kubernetes Service Accounts (KSAs), and establishes Workload Identity mappings to grant GKE pods target Google Cloud permissions.
@@ -158,7 +158,7 @@ kubectl apply -f k8s/sandbox-networkpolicy.yaml
 >
 > Allowing the metadata server is a deliberate trade-off: the code being judged could also use the sandbox's identity. That is why the sandbox service account is only granted `roles/aiplatform.user`.
 
-### Apply Sandbox Claim Template
+### Apply Sandbox Template
 Use `envsubst` to populate the sandbox template definition with your active environment variables, and apply it:
 
 ```bash
@@ -166,11 +166,11 @@ source ./setup-env.sh
 envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
 ```
 
-> **Why we deploy the Sandbox Claim Template:**
-> The Sandbox Claim Template acts as the blueprint configuration defining the environment. It specifies the container image to run (pre-packaged with developer tools), environment parameters (GCP Project ID), ports, and resource limits (CPU/Memory targets). It configures GKE to run these container instances utilizing **gVisor (gvisor runtime)**, guaranteeing that untrusted participant code runs under an extra layer of kernel virtualization isolation.
+> **Why we deploy the Sandbox Template:**
+> The SandboxTemplate is the blueprint for every sandbox pod. It specifies the container image to run (pre-packaged with developer tools), environment parameters (GCP Project ID), ports, and resource limits (CPU/Memory targets). It configures GKE to run these pods with **gVisor (gvisor runtime)**, guaranteeing that untrusted participant code runs under an extra layer of kernel virtualization isolation. It also sets `networkPolicyManagement: Unmanaged`, because we supply our own Sandbox Network Policy instead of the controller's default (which would block Workload Identity), and turns off Kubernetes service account token mounting so judged code cannot call the Kubernetes API.
 
 ### Apply Sandbox WarmPool
-Apply the Sandbox WarmPool to pre-initialize running sandboxes:
+Apply the Sandbox WarmPool, which references the template above, to pre-initialize running sandboxes:
 
 ```bash
 kubectl apply -f k8s/sandbox-warmpool.yaml
@@ -256,7 +256,13 @@ Open the displayed public IP address in your browser.
 Use the frontend UI to add a team, configure evaluation parameters, and submit a project task for grading.
 
 ### Watch Sandbox Kickoff
-Monitor the active pods inside the `hackathon-judge` namespace to see a sandbox pod dynamically claimed and provisioned for judging execution:
+When a judging task starts, the worker agent creates a SandboxClaim, and the Agent Sandbox controller binds it to one of the pre-warmed pods. Watch the claims to see this happen:
+
+```bash
+kubectl get sandboxclaims -n hackathon-judge -w
+```
+
+In a second terminal, monitor the pods inside the `hackathon-judge` namespace. When a pre-warmed pod is claimed, the controller starts a new one to refill the WarmPool:
 
 ```bash
 kubectl get pods -n hackathon-judge -w
@@ -269,7 +275,7 @@ kubectl logs -l app=agent -n hackathon-judge
 ```
 
 > **Why we inspect Agent logs:**
-> Inspecting worker agent logs displays the detailed internal steps of the evaluation pipeline in real-time. You can trace the ADK agent fetching the task, requesting a sandbox container, executing compilation targets, analyzing reports with Gemini, and publishing scorecards.
+> Inspecting worker agent logs displays the detailed internal steps of the evaluation pipeline in real-time. You can trace the ADK agent fetching the task, claiming a sandbox from the WarmPool, sending files and commands to it through the Sandbox Router, and publishing scorecards. When the evaluation finishes, the agent deletes its SandboxClaim.
 
 ---
 
@@ -460,6 +466,7 @@ graph TD
 * **Sandbox Router (internal)**: A stateless reverse proxy in the `agent-sandbox-system` namespace. The worker agent claims a sandbox from the WarmPool through the Kubernetes API, then sends commands and file operations to the router, which forwards them to that sandbox pod. There is no public endpoint.
 * **Sandbox WarmPool**: To avoid long GKE container startup times ("cold starts" of 30+ seconds), the WarmPool maintains active standby pods. When the worker creates a SandboxClaim, the Agent Sandbox controller binds it to a pre-warmed pod in sub-second time, and refills the pool after the claim is deleted.
 * **gVisor (runsc) Isolation**: A user-space virtual kernel that acts as a secure sandboxing boundary. It intercepts system calls from the container space to GKE node kernels, ensuring that dangerous raw commands (like system scripts or package setups) run under absolute virtualization isolation.
+* **Sandbox Network Policy**: Network isolation for the sandbox pods. Only the Sandbox Router can connect in, and sandboxes can only connect out to cluster DNS, the GKE metadata server (for Workload Identity), and the public internet, so judged code cannot reach other pods or private addresses in your VPC.
 * **FastAPI Sandbox Runtime**: A lightweight Python API server running inside the sandbox container. It exposes secure endpoints (`/execute`, `/upload`, `/download`) that allow external worker tools to manipulate files and trigger shell tasks.
 * **Gemini CLI (`@google/gemini-cli`)**: An autonomous agent script installed inside the sandbox. When triggered with the developer environment runtime flag (`--yolo`), it uses a rigorous grading instruction sheet (`prompt.md`) and criteria definition (`criteria.md`) to:
   - Dynamically analyze the codebase hierarchy (using tools like `tree` or `ripgrep`).
@@ -484,7 +491,7 @@ To avoid ongoing charges to your Google Cloud account, delete the resources crea
 ```
 
 > **Why we clean up resources:**
-> Google Cloud bills on a resource utilization model. Active resources like GKE Autopilot clusters, network load balancers, and persistent disks incur ongoing charges even when they are idle. Running this step deletes the cluster namespace to clear Kubernetes objects, and deletes the GKE Autopilot cluster host itself to immediately terminate all underlying billing charges.
+> Google Cloud bills on a resource utilization model. Active resources like GKE Autopilot clusters, load balancers, and stored images incur ongoing charges even when they are idle. The `destroy.sh` script deletes the Pub/Sub topics and subscriptions, the GKE Autopilot cluster (including Agent Sandbox and every sandbox pod), the Artifact Registry repository, the BigQuery dataset, and the README storage bucket. It asks you to type `DESTROY` to confirm, and offers to keep your local `.env` file for a future deployment.
 
 ---
 
@@ -497,7 +504,8 @@ You have implemented a secure, modern event-driven AI platform capable of testin
 
 ### What you've learned
 - **GKE Infrastructure**: How to provision GKE Autopilot and supporting Google Cloud services like Pub/Sub and BigQuery.
-- **Agent Sandbox Configuration**: How to configure Custom Resource Definitions, SandboxTemplates, SandboxClaims, and high-performance Sandbox WarmPools.
+- **Agent Sandbox Configuration**: How to install the Agent Sandbox controller, define a SandboxTemplate and a high-performance Sandbox WarmPool, and claim pre-warmed sandboxes with SandboxClaims.
+- **Sandbox Networking**: How to reach sandboxes only through an internal Sandbox Router, and lock them down with a Kubernetes NetworkPolicy.
 - **Microservices Deployment**: How to configure Workload Identity bindings and deploy a multi-component microservices architecture (Frontend React, REST Go, Worker ADK Agent, and Isolated Sandbox).
 - **Secure Sandboxing**: How to utilize gVisor virtualized containers to run untrusted third-party commands securely on GKE nodes.
 
@@ -507,6 +515,7 @@ You have implemented a secure, modern event-driven AI platform capable of testin
 - Check out the [Agent Platform Documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).
 
 ### Reference docs
+- [Agent Sandbox v1.0.4 release](https://github.com/kubernetes-sigs/agent-sandbox/releases/tag/v1.0.4)
 - [Kubernetes Gateway API Specification](https://gateway-api.sigs.k8s.io/)
 - [gVisor Sandboxing Runtime](https://gvisor.dev/)
 
