@@ -14,6 +14,8 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -47,11 +49,15 @@ class FakeResponse:
 @pytest.fixture
 def fake_agent(monkeypatch):
     """Replaces app.judge.Agent; returns a dict to configure behaviour and inspect calls."""
-    state = {"output": VALID, "delay": 0, "error": None, "configs": [], "messages": []}
+    state = {
+        "output": VALID, "delay": 0, "error": None, "configs": [], "messages": [],
+        "cancel": AsyncMock(),
+    }
 
     class FakeAgent:
         def __init__(self, config):
             state["configs"].append(config)
+            self.conversation = SimpleNamespace(cancel=state["cancel"])
 
         async def __aenter__(self):
             if state["error"]:
@@ -69,6 +75,36 @@ def fake_agent(monkeypatch):
 
     monkeypatch.setattr(judge, "Agent", FakeAgent)
     return state
+
+
+class FakeTimer:
+    def __init__(self, interval, function, args=()):
+        self.interval, self.function, self.args = interval, function, args
+        self.daemon = False
+        self.started = self.cancelled = False
+
+    def start(self):
+        self.started = True
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self):
+        self.function(*self.args)
+
+
+@pytest.fixture(autouse=True)
+def timers(monkeypatch):
+    """Replaces the watchdog Timer so tests never start real threads."""
+    created = []
+
+    def factory(*args, **kwargs):
+        timer = FakeTimer(*args, **kwargs)
+        created.append(timer)
+        return timer
+
+    monkeypatch.setattr(judge.threading, "Timer", factory)
+    return created
 
 
 @pytest.fixture
@@ -96,7 +132,10 @@ def test_build_config_defaults():
         BuiltinTools.SEARCH_WEB,
         BuiltinTools.GENERATE_IMAGE,
         BuiltinTools.START_SUBAGENT,
+        BuiltinTools.SCHEDULE,
     ]
+    assert cfg.capabilities.run_command_config.timeout_seconds == 180
+    assert judge.RUN_COMMAND_TIMEOUT_SECONDS == 180
 
 
 def test_build_config_env_overrides():
@@ -148,6 +187,41 @@ def test_timeout_exits_3(fake_agent, workdir, capsys):
     assert rc == judge.EXIT_TIMEOUT == 3
     assert "timed out" in capsys.readouterr().err
     assert not (workdir / "evaluation.json").exists()
+    fake_agent["cancel"].assert_awaited_once()
+
+
+def test_timeout_survives_failing_halt(fake_agent, workdir):
+    fake_agent["delay"] = 5
+    fake_agent["cancel"].side_effect = RuntimeError("halt failed")
+    rc = asyncio.run(judge.run(workdir, {**ENV, "JUDGE_TIMEOUT_SECONDS": "0.05"}))
+    assert rc == judge.EXIT_TIMEOUT
+
+
+def test_sdk_internal_timeout_is_sdk_error(fake_agent, workdir, capsys):
+    fake_agent["error"] = TimeoutError("connect timed out")
+    assert asyncio.run(judge.run(workdir, ENV)) == judge.EXIT_SDK_ERROR
+    assert "connect timed out" in capsys.readouterr().err
+    fake_agent["cancel"].assert_not_awaited()
+
+
+def test_watchdog_armed_and_cancelled_on_success(fake_agent, workdir, timers):
+    assert asyncio.run(judge.run(workdir, {**ENV, "JUDGE_TIMEOUT_SECONDS": "100"})) == 0
+    (timer,) = timers
+    assert timer.interval == 100 + judge.WATCHDOG_GRACE_SECONDS
+    assert timer.daemon and timer.started and timer.cancelled
+
+
+def test_watchdog_hard_exits_3(fake_agent, workdir, timers, monkeypatch, capsys):
+    exits = []
+    monkeypatch.setattr(judge.os, "_exit", exits.append)
+    asyncio.run(judge.run(workdir, {**ENV, "JUDGE_TIMEOUT_SECONDS": "100"}))
+    timers[0].fire()
+    assert exits == [judge.EXIT_TIMEOUT]
+    assert "judge: timed out after 100s" in capsys.readouterr().err
+
+
+def test_default_watchdog_fires_before_agent_command_timeout():
+    assert judge.DEFAULT_TIMEOUT_SECONDS + judge.WATCHDOG_GRACE_SECONDS < 600
 
 
 @pytest.mark.parametrize("output", [None, {"scores": []}, "not json"])
