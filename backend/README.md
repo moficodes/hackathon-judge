@@ -19,9 +19,10 @@ The backend is a high-performance REST API built in **Go** using the Gin web fra
 
 The backend relies on several environment variables, which can be provided via a `.env` file:
 
-- `GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID (defaults to `mofilabs`).
-- `TASKS_TOPIC`: Pub/Sub topic for publishing judging tasks (defaults to `judging-tasks`).
-- `RESULTS_SUB`: Pub/Sub subscription for receiving evaluation results (defaults to `backend-judging-results-sub`).
+- `GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID (required).
+- `TASKS_TOPIC`: Pub/Sub topic for publishing judging tasks (required, e.g., `judging-tasks`).
+- `RESULTS_SUB`: Pub/Sub subscription for receiving evaluation results (required, e.g., `judging-results-backend-sub`).
+- `BQ_DATASET`: BigQuery dataset name (defaults to `hackathon_judge`).
 
 ## Running the Application
 
