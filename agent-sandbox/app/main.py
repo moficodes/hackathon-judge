@@ -18,6 +18,8 @@ import shlex
 import logging
 import urllib.parse
 import asyncio
+import threading
+import uuid
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
@@ -38,11 +40,36 @@ class ExecuteRequest(BaseModel):
     """Request model for the /execute endpoint."""
     command: str
 
+
+class ExecuteStartRequest(BaseModel):
+    """Request model for the /execute/start endpoint."""
+    command: str
+    timeout: float | None = 600.0
+
 class ExecuteResponse(BaseModel):
     """Response model for the /execute endpoint."""
     stdout: str
     stderr: str
     exit_code: int
+
+
+class ExecuteStartResponse(BaseModel):
+    """Response model for the /execute/start endpoint."""
+    job_id: str
+    status: str
+
+
+class ExecuteStatusResponse(BaseModel):
+    """Response model for the /execute/status/{job_id} endpoint."""
+    job_id: str
+    status: str
+    stdout: str
+    stderr: str
+    exit_code: int | None
+
+
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
 
 def get_safe_path(file_path: str) -> str:
     """Sanitizes the file path to ensure it stays within the sandbox directory."""
@@ -63,6 +90,7 @@ app = FastAPI(
 )
 
 @app.get("/", summary="Health Check")
+@app.get("/health", summary="Health Check")
 async def health_check():
     """A simple health check endpoint to confirm the server is running."""
     return {"status": "ok", "message": "Sandbox Runtime is active."}
@@ -97,6 +125,93 @@ async def execute_command(request: ExecuteRequest):
             stderr=f"Failed to execute command: {str(e)}",
             exit_code=1
         )
+
+
+def _run_async_command(
+    job_id: str,
+    command: str,
+    cwd: str,
+    timeout: float | None = 600.0,
+) -> None:
+    try:
+        args = shlex.split(command)
+        process = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=timeout,
+        )
+        with _jobs_lock:
+            _jobs[job_id] = {
+                "job_id": job_id,
+                "status": "completed",
+                "stdout": process.stdout,
+                "stderr": process.stderr,
+                "exit_code": process.returncode,
+            }
+    except subprocess.TimeoutExpired as e:
+        stdout = (
+            e.stdout.decode("utf-8", errors="replace")
+            if isinstance(e.stdout, bytes)
+            else (e.stdout or "")
+        )
+        stderr = (
+            e.stderr.decode("utf-8", errors="replace")
+            if isinstance(e.stderr, bytes)
+            else (e.stderr or "")
+        )
+        timeout_msg = f"Command timed out after {timeout} seconds"
+        stderr = f"{stderr}\n{timeout_msg}".strip() if stderr else timeout_msg
+        with _jobs_lock:
+            _jobs[job_id] = {
+                "job_id": job_id,
+                "status": "completed",
+                "stdout": stdout,
+                "stderr": stderr,
+                "exit_code": 124,
+            }
+    except Exception as e:
+        logger.exception("Could not execute async command, error: '%s'", str(e))
+        with _jobs_lock:
+            _jobs[job_id] = {
+                "job_id": job_id,
+                "status": "completed",
+                "stdout": "",
+                "stderr": f"Failed to execute command: {str(e)}",
+                "exit_code": 1,
+            }
+
+
+@app.post("/execute/start", summary="Start a shell command asynchronously", response_model=ExecuteStartResponse)
+async def execute_command_start(request: ExecuteStartRequest):
+    """Spawns a shell command asynchronously inside the sandbox and returns its job_id."""
+    job_id = uuid.uuid4().hex
+    with _jobs_lock:
+        _jobs[job_id] = {
+            "job_id": job_id,
+            "status": "running",
+            "stdout": "",
+            "stderr": "",
+            "exit_code": None,
+        }
+    thread = threading.Thread(
+        target=_run_async_command,
+        args=(job_id, request.command, SANDBOX_DIR, request.timeout),
+        daemon=True,
+    )
+    thread.start()
+    return ExecuteStartResponse(job_id=job_id, status="running")
+
+
+@app.get("/execute/status/{job_id}", summary="Poll status of an asynchronous command", response_model=ExecuteStatusResponse)
+async def execute_command_status(job_id: str):
+    """Returns the current status and output of an asynchronous command execution."""
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is not None:
+            return ExecuteStatusResponse(**job)
+    return JSONResponse(status_code=404, content={"message": "Job not found"})
 
 @app.post("/upload", summary="Upload a file to the sandbox")
 async def upload_file(path: str | None = None, file: UploadFile = File(...)):
