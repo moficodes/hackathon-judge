@@ -84,7 +84,7 @@ async def test_evaluate_repository_execution(mock_get_sandbox_client):
     mock_get_sandbox_client.return_value = mock_client
     
     mock_sandbox = MagicMock()
-    mock_sandbox.name = "test-sandbox"
+    mock_sandbox.name = "judge-12345678"
     
     # Mocking successful commands and file reads (sync)
     mock_client.create_sandbox = MagicMock(return_value=mock_sandbox)
@@ -93,19 +93,71 @@ async def test_evaluate_repository_execution(mock_get_sandbox_client):
     mock_sandbox.files.read = MagicMock(return_value='{"total_score": 10}')
     mock_sandbox.terminate = MagicMock(return_value=None)
 
-    with patch.dict('os.environ', {'SANDBOX_WARMPOOL': 'test-pool', 'SANDBOX_NAMESPACE': 'test-ns'}):
+    with patch.dict(
+        'os.environ',
+        {'SANDBOX_TEMPLATE': 'judge-sandbox', 'SANDBOX_NAMESPACE': 'test-ns'},
+        clear=True,
+    ):
         from src.adapters.outbound.shared_sandbox import evaluate_repository
         result = evaluate_repository("https://github.com/test/repo", "# Criteria")
 
     assert "total_score" in result
-    mock_client.create_sandbox.assert_called_once_with(warmpool="test-pool", namespace="test-ns")
+    mock_client.create_sandbox.assert_called_once_with(template="judge-sandbox", namespace="test-ns")
     mock_sandbox.commands.run.assert_any_call("git clone https://github.com/test/repo repo")
     from src.adapters.outbound.shared_sandbox import SANDBOX_PROMPT
     mock_sandbox.files.write.assert_any_call("criteria.md", "# Criteria")
     mock_sandbox.files.write.assert_any_call("prompt.md", SANDBOX_PROMPT)
-    mock_sandbox.commands.run.assert_any_call("uv run python -m app.judge", timeout=600)
+    mock_sandbox.commands.run.assert_any_call(
+        "env MODEL_PROXY_BASE_URL=http://agent.test-ns.svc.cluster.local:8000/vertex-proxy uv run python -m app.judge",
+        timeout=600,
+    )
     mock_sandbox.files.read.assert_called_once_with("evaluation.json")
     mock_sandbox.terminate.assert_called_once()
+
+
+@patch('src.adapters.outbound.shared_sandbox.get_sandbox_client')
+def test_evaluate_repository_defaults_and_warmpool_fallback(mock_get_sandbox_client):
+    mock_client = MagicMock()
+    mock_get_sandbox_client.return_value = mock_client
+    mock_sandbox = MagicMock()
+    mock_client.create_sandbox = MagicMock(return_value=mock_sandbox)
+    mock_sandbox.commands.run = MagicMock(return_value=MagicMock(exit_code=0))
+    mock_sandbox.files.read = MagicMock(return_value='{"total_score": 10}')
+
+    from src.adapters.outbound.shared_sandbox import evaluate_repository
+
+    # Defaults to template="judge-sandbox" and namespace="hackathon-judge"
+    with patch.dict('os.environ', {}, clear=True):
+        evaluate_repository("https://github.com/test/repo", "# Criteria")
+
+    mock_client.create_sandbox.assert_called_with(
+        template="judge-sandbox", namespace="hackathon-judge"
+    )
+    mock_sandbox.commands.run.assert_any_call(
+        "env MODEL_PROXY_BASE_URL=http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy uv run python -m app.judge",
+        timeout=600,
+    )
+
+    # Falls back to SANDBOX_WARMPOOL and honors custom MODEL_PROXY_BASE_URL
+    mock_client.create_sandbox.reset_mock()
+    with patch.dict(
+        'os.environ',
+        {
+            'SANDBOX_WARMPOOL': 'legacy-pool',
+            'SANDBOX_NAMESPACE': 'custom-ns',
+            'MODEL_PROXY_BASE_URL': 'http://agent.custom-ns.svc.cluster.local:8082/vertex-proxy',
+        },
+        clear=True,
+    ):
+        evaluate_repository("https://github.com/test/repo", "# Criteria")
+
+    mock_client.create_sandbox.assert_called_once_with(
+        template="legacy-pool", namespace="custom-ns"
+    )
+    mock_sandbox.commands.run.assert_any_call(
+        "env MODEL_PROXY_BASE_URL=http://agent.custom-ns.svc.cluster.local:8082/vertex-proxy uv run python -m app.judge",
+        timeout=600,
+    )
 
 @pytest.mark.asyncio
 async def test_mock_publisher():
@@ -142,13 +194,6 @@ async def test_real_publisher_no_attribute_errors(mock_publisher_client_cls):
     args, kwargs = mock_publisher_instance.publish.call_args
     assert args[0] == "projects/test/topics/test"
     assert b"tsk_123" in kwargs['data']
-
-
-def test_evaluate_repository_requires_warmpool():
-    with patch.dict('os.environ', {'SANDBOX_NAMESPACE': 'test-ns'}, clear=True):
-        from src.adapters.outbound.shared_sandbox import evaluate_repository
-        with pytest.raises(ValueError, match="SANDBOX_WARMPOOL environment variable is required"):
-            evaluate_repository("https://github.com/test/repo", "# Criteria")
 
 
 @patch('src.adapters.outbound.shared_sandbox.get_sandbox_client')
