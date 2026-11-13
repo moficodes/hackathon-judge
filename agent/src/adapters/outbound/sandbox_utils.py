@@ -13,33 +13,52 @@
 # limitations under the License.
 
 import os
-from k8s_agent_sandbox import SandboxClient
-from k8s_agent_sandbox.models import (
-    SandboxDirectConnectionConfig,
-    SandboxLocalTunnelConnectionConfig,
+
+from .substrate_client import (
+    DEFAULT_ROUTER_URL,
+    DEFAULT_SANDBOX_NAMESPACE,
+    DEFAULT_SANDBOX_TEMPLATE,
+    DEFAULT_TUNNEL_URL,
+    CommandResult,
+    SubstrateActor,
+    SubstrateActorClient,
+    SubstrateSandbox,
+    SubstrateSandboxClient,
 )
 
-DEFAULT_ROUTER_URL = "http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080"
 
-
-def get_sandbox_client() -> SandboxClient:
-    """Builds a SandboxClient for the configured connection method.
+def get_sandbox_client() -> SubstrateActorClient:
+    """Builds a SubstrateActorClient for the configured connection method.
 
     SANDBOX_CONNECTION_METHOD:
-      - "router" (default): in-cluster, via the sandbox-router Service.
+      - "router" (default): in-cluster via atenet-router with PodCertificate mTLS.
         Override the URL with SANDBOX_ROUTER_URL.
-      - "tunnel": local development; the SDK port-forwards to the router
-        Service in agent-sandbox-system using the local kubeconfig.
+      - "tunnel": local development via HTTP port-forward or bridge.
     """
     method = os.getenv("SANDBOX_CONNECTION_METHOD", "router").lower()
 
     if method == "router":
-        config = SandboxDirectConnectionConfig(
-            api_url=os.getenv("SANDBOX_ROUTER_URL", DEFAULT_ROUTER_URL)
-        )
+        router_url = os.getenv("SANDBOX_ROUTER_URL", DEFAULT_ROUTER_URL)
     elif method == "tunnel":
-        config = SandboxLocalTunnelConnectionConfig()
+        router_url = os.getenv("SANDBOX_ROUTER_URL", DEFAULT_TUNNEL_URL)
     else:
         raise ValueError(f"Unknown SANDBOX_CONNECTION_METHOD: {method}")
 
-    return SandboxClient(connection_config=config)
+    return SubstrateActorClient(
+        router_url=router_url,
+        connection_method=method,
+    )
+
+
+__all__ = [
+    "CommandResult",
+    "DEFAULT_ROUTER_URL",
+    "DEFAULT_SANDBOX_NAMESPACE",
+    "DEFAULT_SANDBOX_TEMPLATE",
+    "DEFAULT_TUNNEL_URL",
+    "SubstrateActor",
+    "SubstrateActorClient",
+    "SubstrateSandbox",
+    "SubstrateSandboxClient",
+    "get_sandbox_client",
+]

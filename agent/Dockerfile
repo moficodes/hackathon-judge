@@ -21,6 +21,10 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 FROM python:3.12-alpine
+RUN apk add --no-cache curl ca-certificates libc6-compat gcompat && \
+    curl -fsSL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl && \
+    curl -fsSL "https://github.com/agent-substrate/substrate/releases/download/v1.0.0/kubectl-ate-linux-amd64" -o /usr/local/bin/kubectl-ate && \
+    chmod +x /usr/local/bin/kubectl /usr/local/bin/kubectl-ate
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app"

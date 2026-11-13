@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import json
 import logging
+import os
 import shlex
-from .sandbox_utils import get_sandbox_client
+from .sandbox_utils import (
+    DEFAULT_SANDBOX_NAMESPACE,
+    DEFAULT_SANDBOX_TEMPLATE,
+    get_sandbox_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,28 +59,33 @@ When you have finished, return your evaluation as your final structured result. 
 JUDGE_COMMAND = "uv run python -m app.judge"
 JUDGE_COMMAND_TIMEOUT_SECONDS = 600
 
+
 def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     """
-    Clones a repository into a secure sandbox and uses an autonomous agent to evaluate it 
-    against the provided judging criteria.
-    
+    Clones a repository into an ephemeral Judge Actor and uses an autonomous agent
+    to evaluate it against the provided judging criteria.
+
     Args:
         github_url: The URL of the GitHub repository to clone.
         judging_criteria: A markdown formatted string containing the judging criteria and rubric.
-        
+
     Returns:
         A JSON string containing the evaluation results.
     """
-    warmpool = os.getenv("SANDBOX_WARMPOOL")
-    if not warmpool:
-        raise ValueError("SANDBOX_WARMPOOL environment variable is required")
-    namespace = os.getenv("SANDBOX_NAMESPACE")
-    if not namespace:
-        raise ValueError("SANDBOX_NAMESPACE environment variable is required")
-    
+    template = (
+        os.getenv("SANDBOX_TEMPLATE")
+        or os.getenv("SANDBOX_WARMPOOL")
+        or DEFAULT_SANDBOX_TEMPLATE
+    )
+    namespace = os.getenv("SANDBOX_NAMESPACE") or DEFAULT_SANDBOX_NAMESPACE
+    model_proxy_url = (
+        os.getenv("MODEL_PROXY_BASE_URL")
+        or f"http://agent.{namespace}.svc.cluster.local:8000/vertex-proxy"
+    )
+
     client = get_sandbox_client()
     sandbox = client.create_sandbox(
-        warmpool=warmpool,
+        template=template,
         namespace=namespace,
     )
     try:
@@ -85,20 +94,27 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
         clone = sandbox.commands.run(f"git clone {safe_url} repo")
         if clone.exit_code != 0:
             stderr_tail = (clone.stderr or "").strip()[-500:]
-            raise RuntimeError(f"git clone failed (exit {clone.exit_code}): {stderr_tail}")
-        # Write criteria to markdown file
-        sandbox.files.write('criteria.md', judging_criteria)
-        
-        sandbox.files.write('prompt.md', SANDBOX_PROMPT)
-        result = sandbox.commands.run(JUDGE_COMMAND, timeout=JUDGE_COMMAND_TIMEOUT_SECONDS)
+            raise RuntimeError(
+                f"git clone failed (exit {clone.exit_code}): {stderr_tail}"
+            )
+        # Write criteria and prompt to markdown files
+        sandbox.files.write("criteria.md", judging_criteria)
+        sandbox.files.write("prompt.md", SANDBOX_PROMPT)
+
+        judge_cmd = f"env MODEL_PROXY_BASE_URL={shlex.quote(model_proxy_url)} {JUDGE_COMMAND}"
+        result = sandbox.commands.run(
+            judge_cmd, timeout=JUDGE_COMMAND_TIMEOUT_SECONDS
+        )
         if result.exit_code != 0:
             stderr_tail = (result.stderr or "").strip()[-2000:]
-            raise RuntimeError(f"judge exited with code {result.exit_code}: {stderr_tail}")
-        result_json = sandbox.files.read('evaluation.json')
+            raise RuntimeError(
+                f"judge exited with code {result.exit_code}: {stderr_tail}"
+            )
+        result_json = sandbox.files.read("evaluation.json")
         return result_json
     except Exception as e:
         logger.error(f"Sandbox evaluation failed: {str(e)}")
         return json.dumps({"error": f"Sandbox evaluation failed: {str(e)}"})
     finally:
-        logger.info("Terminating sandbox...")
+        logger.info("Terminating Judge Actor...")
         sandbox.terminate()
