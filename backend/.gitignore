@@ -2,6 +2,7 @@
 !/**/
 !*.*
 !Dockerfile
+!Makefile
 
 bin/
 tmp/

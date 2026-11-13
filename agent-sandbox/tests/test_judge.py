@@ -131,7 +131,7 @@ def test_build_config_defaults():
     assert cfg.capabilities.disabled_tools == [
         BuiltinTools.SEARCH_WEB,
         BuiltinTools.GENERATE_IMAGE,
-        BuiltinTools.START_SUBAGENT,
+        BuiltinTools.INVOKE_SUBAGENT,
         BuiltinTools.SCHEDULE,
     ]
     assert cfg.capabilities.run_command_config.timeout_seconds == 180

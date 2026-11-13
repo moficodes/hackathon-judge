@@ -17,8 +17,8 @@ FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && apt-get install -y curl tar gnupg
 
-# Install Go 1.26.2
-RUN curl -fsSL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -xzC /usr/local
+# Install Go 1.26.11
+RUN curl -fsSL https://go.dev/dl/go1.26.11.linux-amd64.tar.gz | tar -xzC /usr/local
 
 # Stage 2: Final Image
 FROM debian:bookworm-slim

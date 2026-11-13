@@ -120,7 +120,7 @@ The script creates the `hackathon_judge` dataset, applies structural SQL databas
 The script triggers the `cloudbuild.yaml` definition to compile our React UI, Go REST server, Python ADK worker, and FastAPI sandbox, packaging them into isolated container images tagged with the active repository Git commit SHA and saving them to Artifact Registry.
 
 #### 9. Installing Agent Sandbox (Controller and CRDs)
-The script installs a pinned release (`v1.0.4`) of the Kubernetes-sigs Agent Sandbox controller and Custom Resource Definitions (`sandbox.yaml` and `extensions.yaml`) to extend GKE's core capabilities.
+The script installs a pinned release (`v1.0.11`) of the Kubernetes-sigs Agent Sandbox controller and Custom Resource Definitions (`sandbox.yaml` and `extensions.yaml`) to extend GKE's core capabilities.
 > **Why we install the Agent Sandbox infrastructure:**
 > Standard Kubernetes clusters lack support for allocating protected on-demand sandboxes. Agent Sandbox adds Custom Resources (Sandboxes, SandboxTemplates, SandboxWarmPools, and SandboxClaims) and a controller, running in the `agent-sandbox-system` namespace, that turns them into isolated sandbox pods.
 
@@ -181,6 +181,10 @@ Verify that the warm pool standby instances have started successfully:
 ```bash
 kubectl get pods -n hackathon-judge -l app=sandbox
 ```
+
+> aside positive
+> **Pre-warming latency:**
+> It can take up to a minute for GKE to pull the sandboxed container image and spin up the pre-warmed replicas. Run this command with the watch flag `-w` or repeat it until you see all 5 replicas are in the `Running` state before proceeding to the deployment steps.
 
 > **Why we deploy the Sandbox WarmPool:**
 > Provisioning, scheduling, pulling images, and booting fresh container pods on-demand introduces substantial startup overhead (cold start times of 30+ seconds). The Sandbox WarmPool maintains a standby pool of active, pre-warmed sandbox pods (5 replicas by default). When the worker agent claims an evaluation environment, the Agent Sandbox controller binds the claim to a running pre-warmed pod, cutting start-up delays to sub-second speeds.
@@ -243,14 +247,29 @@ Duration: 05:00
 ### Access the UI
 Fetch the external public IP address of the newly provisioned main load balancer gateway:
 
+> aside negative
+> **Wait for Load Balancer Provisioning:**
+> Google Cloud's global external load balancer takes **2 to 5 minutes** to allocate IP resources, set up global forwarding rules, and configure the global routing path. If the `ADDRESS` column is empty or shows `<pending>`, wait a few minutes and query again.
+
+To watch the provisioning status in real time, run the command with the watch flag (`-w`) and wait until a public IP address is populated in the `ADDRESS` field:
+
 ```bash
-kubectl get gateway -n hackathon-judge hackathon-judge-gateway
+kubectl get gateway -n hackathon-judge hackathon-judge-gateway -w
 ```
+
+When successfully provisioned, you should see output similar to the following:
+
+```console
+NAME                      CLASS    ADDRESS          PROGRAMMED   AGE
+hackathon-judge-gateway   gke-l7   34.120.120.120   True         3m
+```
+
+Once you see a valid public IP address in the `ADDRESS` column and the `PROGRAMMED` status is `True`, press `Ctrl+C` to stop the watch.
 
 > **Why we get the Gateway status:**
 > The Gateway API handles public ingress. Checking the Gateway status returns the public, load-balanced external IP address allocated by Google Cloud's external global load balancer to our cluster, which represents the public address of our platform.
 
-Open the displayed public IP address in your browser.
+Open the allocated public IP address in your browser to load the Hackathon Judge dashboard.
 
 ### Submit Tasks
 Use the frontend UI to add a team, configure evaluation parameters, and submit a project task for grading.
@@ -267,6 +286,11 @@ In a second terminal, monitor the pods inside the `hackathon-judge` namespace. W
 ```bash
 kubectl get pods -n hackathon-judge -w
 ```
+
+> aside positive
+> **Replenishing the WarmPool by Design:**
+> When the worker agent claims a pre-warmed sandbox pod from the pool, you will see a new sandbox pod boot up in the list (transitioning from `Pending` -> `ContainerCreating` -> `Running`). 
+> This is by design! The GKE **Agent Sandbox controller** actively monitors the pool size and is programmed to maintain an exact target number of active pre-warmed sandbox containers (5 by default). The moment a standby container is claimed, the controller immediately schedules a new pre-warmed pod to replace it, ensuring the platform is always ready for the next incoming evaluation task with sub-second startup times.
 
 Check the logs of the worker agent pod to witness the step-by-step ADK judging evaluation logic:
 
@@ -515,7 +539,7 @@ You have implemented a secure, modern event-driven AI platform capable of testin
 - Check out the [Agent Platform Documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).
 
 ### Reference docs
-- [Agent Sandbox v1.0.4 release](https://github.com/kubernetes-sigs/agent-sandbox/releases/tag/v1.0.4)
+- [Agent Sandbox v1.0.11 release](https://github.com/kubernetes-sigs/agent-sandbox/releases/tag/v1.0.11)
 - [Kubernetes Gateway API Specification](https://gateway-api.sigs.k8s.io/)
 - [gVisor Sandboxing Runtime](https://gvisor.dev/)
 

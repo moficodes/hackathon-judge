@@ -55,7 +55,7 @@ RUN_COMMAND_TIMEOUT_SECONDS = 180  # The SDK default is 10 minutes.
 DISABLED_TOOLS = [
     BuiltinTools.SEARCH_WEB,
     BuiltinTools.GENERATE_IMAGE,
-    BuiltinTools.START_SUBAGENT,
+    BuiltinTools.INVOKE_SUBAGENT,
     BuiltinTools.SCHEDULE,
 ]
 

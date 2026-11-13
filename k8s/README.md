@@ -52,10 +52,10 @@ graph TD
    kubectl apply -f agent-deployment.yaml
    ```
 
-4. Install Agent Sandbox v1.0.4, then apply the sandbox configuration:
+4. Install Agent Sandbox v1.0.11, then apply the sandbox configuration:
    ```bash
-   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.4/sandbox.yaml
-   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.4/extensions.yaml
+   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox.yaml
+   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/extensions.yaml
    kubectl apply -f sandbox_router.yaml
    kubectl apply -f sandbox-networkpolicy.yaml
    envsubst < sandbox-claim-template.yaml | kubectl apply -f -

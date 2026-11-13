@@ -659,30 +659,33 @@ fi
 # ------------------------------------------------------------------------------
 # Step 10: Triggering Service Builds with Cloud Build
 # ------------------------------------------------------------------------------
+# Detect Git status and determine target tag in the parent shell so Step 11
+# (setup-env.sh) uses the exact same COMMIT_SHA even when the tree is dirty.
+COMMIT_SHA="${COMMIT_SHA:-}"
+IS_DIRTY=false
+if [ -z "$COMMIT_SHA" ]; then
+  if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
+    if [ -n "$(git status --porcelain)" ]; then
+      log_warning "Git repository has uncommitted changes (dirty state)."
+      COMMIT_SHA="dirty-$(date +%s)"
+      IS_DIRTY=true
+    else
+      COMMIT_SHA=$(git rev-parse --short HEAD)
+      log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
+    fi
+  else
+    log_warning "Git not detected or repository not initialized. Generating timestamp tag."
+    COMMIT_SHA="manual-$(date +%s)"
+    IS_DIRTY=true
+  fi
+elif [[ "$COMMIT_SHA" == dirty-* ]] || [[ "$COMMIT_SHA" == manual-* ]]; then
+  IS_DIRTY=true
+fi
+export COMMIT_SHA
+
 if [ "$RUN_BUILD" = "true" ]; then
   (
     log_info "Starting Service Builds with Cloud Build..."
-
-    # Detect Git status and determine target tag
-    COMMIT_SHA="latest"
-    IS_DIRTY=false
-
-    if command -v git &> /dev/null && git rev-parse --short HEAD &> /dev/null; then
-      # Check if git repository has any uncommitted changes (tracked or untracked)
-      if [ -n "$(git status --porcelain)" ]; then
-        log_warning "Git repository has uncommitted changes (dirty state)."
-        COMMIT_SHA="dirty-$(date +%s)"
-        IS_DIRTY=true
-      else
-        COMMIT_SHA=$(git rev-parse --short HEAD)
-        log_info "Git repository is clean. Active commit SHA: $COMMIT_SHA"
-      fi
-    else
-      log_warning "Git not detected or repository not initialized. Generating timestamp tag."
-      COMMIT_SHA="manual-$(date +%s)"
-      IS_DIRTY=true # Non-git workspaces always trigger rebuild
-    fi
-    export COMMIT_SHA
 
     log_info "Registry Region:     $ARTIFACT_REGISTRY_LOCATION"
     log_info "Registry Repository: $ARTIFACT_REPO_NAME"
@@ -715,7 +718,7 @@ if [ "$RUN_BUILD" = "true" ]; then
       log_success "Skipping Google Cloud Build compilation! (Incremental Skip) 🚀"
     else
       log_info "Triggering Google Cloud Build to compile and package all services..."
-      if gcloud builds submit --config cloudbuild.yaml . \
+      if gcloud builds submit --region="$GOOGLE_CLOUD_REGION" --config cloudbuild.yaml . \
           --substitutions=_REGION="$ARTIFACT_REGISTRY_LOCATION",_REPO="$ARTIFACT_REPO_NAME",COMMIT_SHA="$COMMIT_SHA"; then
         log_success "Cloud Build completed successfully! All containers pushed to registry."
       else
@@ -764,7 +767,7 @@ if [ "$RUN_K8S" = "true" ]; then
   log_info "Installing Agent Sandbox CRDs..."
 
   # Pinned: upstream ships breaking changes; bump deliberately.
-  AGENT_SANDBOX_VERSION="v1.0.4"
+  AGENT_SANDBOX_VERSION="v1.0.11"
   AGENT_SANDBOX_RELEASE_URL="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}"
 
   if ! kubectl apply -f "${AGENT_SANDBOX_RELEASE_URL}/sandbox.yaml"; then
@@ -792,14 +795,19 @@ if [ "$RUN_K8S" = "true" ]; then
   bind_workload_identity() {
     local ksa_name=$1
     local role=$2
+    local attempt=1
     log_info "  Binding $role to $ksa_name..."
-    if ! gcloud projects add-iam-policy-binding "projects/$GOOGLE_CLOUD_PROJECT" \
+    while ! gcloud projects add-iam-policy-binding "projects/$GOOGLE_CLOUD_PROJECT" \
       --role="$role" \
       --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$GOOGLE_CLOUD_PROJECT.svc.id.goog/subject/ns/$NAMESPACE/sa/$ksa_name" \
-      --condition=None >/dev/null 2>&1; then
-      log_error "Failed to bind role $role to service account $ksa_name."
-      exit 1
-    fi
+      --condition=None >/dev/null 2>&1; do
+      if [ $attempt -ge 3 ]; then
+        log_error "Failed to bind role $role to service account $ksa_name."
+        exit 1
+      fi
+      attempt=$((attempt + 1))
+      sleep 2
+    done
   }
 
   log_info "Configuring IAM permissions for Kubernetes Service Accounts via Workload Identity..."
