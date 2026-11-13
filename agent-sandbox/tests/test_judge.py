@@ -22,7 +22,7 @@ import pytest
 from app import judge
 from app.judge_schema import Evaluation
 from google.antigravity import BuiltinTools
-from google.antigravity.types import ToolCall
+from google.antigravity.types import ModelTarget, ModelType, ToolCall, VertexEndpoint
 
 VALID = {
     "scores": [{"name": "Innovation", "score": 7, "reasoning": "repo/main.go:10"}],
@@ -150,6 +150,64 @@ def test_build_config_env_overrides():
 def test_empty_judge_model_uses_sdk_default():
     cfg = judge.build_config("sys", "/w", {"GOOGLE_CLOUD_PROJECT": "proj", "JUDGE_MODEL": ""})
     assert cfg.model is None
+
+
+def test_build_config_model_proxy_base_url_configures_vertex_endpoint():
+    proxy_url = "http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy"
+    cfg = judge.build_config(
+        "sys",
+        "/w",
+        {"GOOGLE_CLOUD_PROJECT": "proj", "MODEL_PROXY_BASE_URL": proxy_url},
+    )
+    assert not cfg.vertex
+    assert cfg.models == [
+        ModelTarget(
+            name="gemini-3.8-flash",
+            types=[ModelType.TEXT, ModelType.IMAGE],
+            endpoint=VertexEndpoint(
+                base_url=proxy_url,
+                project="proj",
+                location="global",
+            ),
+        )
+    ]
+
+
+def test_build_config_model_proxy_respects_model_and_location_overrides():
+    proxy_url = "http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy"
+    cfg = judge.build_config(
+        "sys",
+        "/w",
+        {
+            "GOOGLE_CLOUD_PROJECT": "proj",
+            "GOOGLE_CLOUD_LOCATION": "us-central1",
+            "JUDGE_MODEL": "gemini-custom",
+            "VERTEX_PROXY_URL": proxy_url,
+        },
+    )
+    assert not cfg.vertex
+    assert cfg.models == [
+        ModelTarget(
+            name="gemini-custom",
+            types=[ModelType.TEXT, ModelType.IMAGE],
+            endpoint=VertexEndpoint(
+                base_url=proxy_url,
+                project="proj",
+                location="us-central1",
+            ),
+        )
+    ]
+
+
+def test_build_config_empty_model_proxy_preserves_direct_vertex():
+    cfg = judge.build_config(
+        "sys",
+        "/w",
+        {"GOOGLE_CLOUD_PROJECT": "proj", "MODEL_PROXY_BASE_URL": ""},
+    )
+    assert cfg.vertex is True
+    assert cfg.project == "proj"
+    assert cfg.location == "global"
 
 
 def test_success_writes_evaluation(fake_agent, workdir):

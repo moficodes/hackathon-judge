@@ -19,8 +19,9 @@ prompt.md) as:
 
     uv run python -m app.judge
 
-Uses the Google Antigravity SDK against Vertex AI (Workload Identity via ADC),
-and writes the validated result to evaluation.json.
+Uses the Google Antigravity SDK against Gemini on Agent Platform (via the
+Judge Orchestrator Model Proxy or direct Workload Identity ADC), and writes
+the validated result to evaluation.json.
 
 The agent turn runs under JUDGE_TIMEOUT_SECONDS; on expiry the turn is halted.
 SDK teardown can still block, so a watchdog thread hard-exits the process
@@ -41,12 +42,19 @@ from pathlib import Path
 
 import pydantic
 from google.antigravity import Agent, BuiltinTools, CapabilitiesConfig, LocalAgentConfig
-from google.antigravity.types import RunCommandConfig, ToolCall
+from google.antigravity.types import (
+    ModelTarget,
+    ModelType,
+    RunCommandConfig,
+    ToolCall,
+    VertexEndpoint,
+)
 from google.antigravity.hooks import policy
 
 from app.judge_schema import Evaluation
 
 DEFAULT_LOCATION = "global"  # gemini-3.8-flash is only served from the global endpoint.
+DEFAULT_MODEL = "gemini-3.8-flash"
 DEFAULT_TIMEOUT_SECONDS = 540  # Plus the watchdog grace, below the agent's 600s command timeout.
 WATCHDOG_GRACE_SECONDS = 30
 HALT_TIMEOUT_SECONDS = 5
@@ -80,23 +88,40 @@ def _err(message: str) -> None:
 
 
 def build_config(system_instructions: str, workspace: str, env: Mapping[str, str]) -> LocalAgentConfig:
-    kwargs = dict(
-        vertex=True,
-        project=env.get("GOOGLE_CLOUD_PROJECT"),
-        location=env.get("GOOGLE_CLOUD_LOCATION") or DEFAULT_LOCATION,
+    location = env.get("GOOGLE_CLOUD_LOCATION") or DEFAULT_LOCATION
+    project = env.get("GOOGLE_CLOUD_PROJECT")
+    model = env.get("JUDGE_MODEL")
+    proxy_url = env.get("MODEL_PROXY_BASE_URL") or env.get("VERTEX_PROXY_URL")
+
+    kwargs: dict = dict(
         system_instructions=system_instructions,
         workspaces=[workspace],
         response_schema=Evaluation,
-        # The gVisor sandbox pod is the isolation boundary, so every tool call is approved.
+        # The gVisor Judge Actor is the isolation boundary, so every tool call is approved.
         policies=[policy.allow_all()],
         capabilities=CapabilitiesConfig(
             disabled_tools=DISABLED_TOOLS,
             run_command_config=RunCommandConfig(timeout_seconds=RUN_COMMAND_TIMEOUT_SECONDS),
         ),
     )
-    model = env.get("JUDGE_MODEL")
-    if model:
-        kwargs["model"] = model
+    if proxy_url:
+        kwargs["models"] = [
+            ModelTarget(
+                name=model or DEFAULT_MODEL,
+                types=[ModelType.TEXT, ModelType.IMAGE],
+                endpoint=VertexEndpoint(
+                    base_url=proxy_url,
+                    project=project or "unknown-project",
+                    location=location,
+                ),
+            )
+        ]
+    else:
+        kwargs["vertex"] = True
+        kwargs["project"] = project
+        kwargs["location"] = location
+        if model:
+            kwargs["model"] = model
     return LocalAgentConfig(**kwargs)
 
 
