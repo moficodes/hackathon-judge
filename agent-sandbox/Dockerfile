@@ -112,11 +112,11 @@ USER sandbox
 WORKDIR /home/sandbox/app
 
 # Copy project files
-COPY --chown=sandbox:sandbox pyproject.toml README.md ./
+COPY --chown=sandbox:sandbox pyproject.toml uv.lock README.md ./
 COPY --chown=sandbox:sandbox app/ ./app/
 
 # Sync dependencies using uv (creates .venv)
-RUN uv sync
+RUN uv sync --frozen
 
 # Verify installations
 RUN node --version && \

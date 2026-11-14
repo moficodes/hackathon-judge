@@ -26,7 +26,7 @@ from src.adapters.outbound.sandbox_utils import (
 
 
 def test_default_router_url_points_at_atenet_router():
-    assert DEFAULT_ROUTER_URL == "https://atenet-router.ate-system.svc.cluster.local:443"
+    assert DEFAULT_ROUTER_URL == "https://atenet-router.ate-system.svc:443"
     assert DEFAULT_TUNNEL_URL == "http://localhost:8080"
 
 

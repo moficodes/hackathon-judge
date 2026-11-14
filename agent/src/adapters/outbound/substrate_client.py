@@ -30,7 +30,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ROUTER_URL = "https://atenet-router.ate-system.svc.cluster.local:443"
+DEFAULT_ROUTER_URL = "https://atenet-router.ate-system.svc:443"
 DEFAULT_TUNNEL_URL = "http://localhost:8080"
 DEFAULT_SANDBOX_TEMPLATE = "judge-sandbox"
 DEFAULT_SANDBOX_NAMESPACE = "hackathon-judge"

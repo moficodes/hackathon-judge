@@ -101,6 +101,8 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: SANDBOX_NAMESPACE
+        - name: SUBSTRATE_API_ENDPOINT
+          value: "api.ate-system.svc:443"
         - name: USE_MOCK_PUBSUB
           value: "false"
         - name: AGENT_TYPE

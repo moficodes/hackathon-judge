@@ -257,12 +257,13 @@ def test_shell_scripts_pass_bash_syntax_check():
 def test_deploy_scripts_provision_gke_standard_gvisor_and_substrate_v1():
     for script_name in ("deploy.sh", "deploy-all.sh"):
         content = (REPO_ROOT / script_name).read_text(encoding="utf-8")
-        # GKE Standard cluster with gVisor sandbox nodes
-        assert 'gcloud container clusters create "$CLUSTER_NAME"' in content
+        # GKE Standard 1.37 cluster in RAPID channel with nested virtualization and Gateway API
+        assert 'clusters create "$CLUSTER_NAME"' in content
         assert "--release-channel=rapid" in content
         assert "--machine-type=c3-standard-4" in content
+        assert "--enable-nested-virtualization" in content
+        assert "--gateway-api=standard" in content
         assert '--workload-pool="${GOOGLE_CLOUD_PROJECT}.svc.id.goog"' in content
-        assert '--sandbox="type=gvisor"' in content
         assert "clusters create-auto" not in content
 
         # Agent Substrate v1.0.0 installation & SPIFFE allowlist

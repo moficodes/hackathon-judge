@@ -536,13 +536,24 @@ if [ "$RUN_GKE" = "true" ]; then
       log_warning "GKE Standard Cluster does not exist. Initiating creation..."
       log_info "NOTE: GKE Standard cluster creation usually takes 5 to 10 minutes. Please be patient."
 
-      if gcloud container clusters create "$CLUSTER_NAME" \
+      # Resolve latest GKE 1.37 version in RAPID channel (required by Agent Substrate v1.0.0)
+      GKE_VERSION=$(gcloud container get-server-config --project="$GOOGLE_CLOUD_PROJECT" --location="$GOOGLE_CLOUD_REGION" \
+        --flatten=channels --filter="channels.channel=RAPID" --format='value(channels.validVersions)' 2>/dev/null | tr ';' '\n' | grep '^1\.37\.' | head -n1 || true)
+      GKE_VERSION_ARGS=()
+      if [ -n "$GKE_VERSION" ]; then
+        GKE_VERSION_ARGS=(--cluster-version="$GKE_VERSION")
+      fi
+
+      if gcloud beta container clusters create "$CLUSTER_NAME" \
           --region="$GOOGLE_CLOUD_REGION" \
+          --node-locations="${GOOGLE_CLOUD_REGION}-a" \
           --release-channel=rapid \
+          "${GKE_VERSION_ARGS[@]}" \
           --machine-type=c3-standard-4 \
           --num-nodes=3 \
+          --enable-nested-virtualization \
+          --gateway-api=standard \
           --workload-pool="${GOOGLE_CLOUD_PROJECT}.svc.id.goog" \
-          --sandbox="type=gvisor" \
           --labels dev-tutorial=airoadshow \
           --project="$GOOGLE_CLOUD_PROJECT"; then
         log_success "GKE Standard cluster '$CLUSTER_NAME' successfully created!"
