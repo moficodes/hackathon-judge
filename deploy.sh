@@ -817,6 +817,10 @@ if [ "$RUN_K8S" = "true" ]; then
   (cd "$SUBSTRATE_SRC_DIR" && GOWORK=off go build -ldflags "-X=go.ate.dev/substrate/internal/version.Version=${SUBSTRATE_VERSION}" -o "${HOME}/.local/bin/kubectl-ate" ./cmd/kubectl-ate)
 
   (cd "$SUBSTRATE_SRC_DIR" && GOWORK=off go run ./cmd/ate-setup deploy ate-system \
+    --gcp-project-id="$GOOGLE_CLOUD_PROJECT" \
+    --gcp-cluster-name="$CLUSTER_NAME" \
+    --gcp-cluster-location="$GOOGLE_CLOUD_REGION" \
+    --rollout-timeout="10m0s" \
     --sandbox-classes="gvisor" \
     --credential-provider='{"enabled":false}' \
     --snapshot-location="gs://${SNAPSHOT_BUCKET}/snapshots/" \
