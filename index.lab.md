@@ -155,7 +155,7 @@ kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml
 Register the `judge-sandbox` `ActorTemplate` to build the memory-fidelity **Golden Snapshot** (`SNAPSHOT_FIDELITY_MEMORY`):
 
 ```bash
-envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a hackathon-judge -f -
+envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -f -
 ```
 
 > **Why we use an ActorTemplate and Golden Snapshot:**

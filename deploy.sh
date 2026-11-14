@@ -891,7 +891,8 @@ if [ "$RUN_K8S" = "true" ]; then
   envsubst < k8s/substrate.yaml | kubectl apply -f -
   kubectl-ate create atespace "$NAMESPACE" 2>/dev/null || true
   kubectl-ate create access-policy -a "$NAMESPACE" -f k8s/access-policy.yaml || true
-  envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a "$NAMESPACE" -f -
+  kubectl-ate delete actor-template judge-sandbox -a "$NAMESPACE" 2>/dev/null || true
+  envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -f -
 
   log_info "Waiting for WorkerPool pods and ActorTemplate Golden Snapshot..."
   kubectl -n hackathon-judge wait --for=condition=Ready pod -l workload=hackathon-judge --timeout=600s

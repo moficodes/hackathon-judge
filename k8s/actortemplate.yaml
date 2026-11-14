@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Agent Substrate v1.0.0 ActorTemplate (protojson-shaped ateapi.ActorTemplate)
-# Applied via: envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a hackathon-judge -f -
+# Applied via: envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -f -
 metadata:
   name: judge-sandbox
   atespace: hackathon-judge

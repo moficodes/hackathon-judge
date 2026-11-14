@@ -62,7 +62,7 @@ To apply the manifests manually against a cluster with Agent Substrate `v1.0.0` 
    envsubst < k8s/substrate.yaml | kubectl apply -f -
    kubectl-ate create atespace hackathon-judge 2>/dev/null || true
    kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml
-   envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a hackathon-judge -f -
+   envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -f -
    ```
 
 4. Deploy the Gateway, Backend, Frontend, and Judge Orchestrator (`agent`):
