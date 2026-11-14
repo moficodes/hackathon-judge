@@ -1,7 +1,7 @@
 ---
 id: agent-substrate-code-evaluation
 summary: Deploy an Automatic Code Evaluator on GKE with Agent Substrate and Antigravity SDK.
-authors: Mofi Rahman, Lucia Subatin
+authors: Mofi Rahman
 categories: GKE, Antigravity SDK, Agent Substrate, BigQuery
 tags: GKE, Antigravity SDK, Agent Substrate
 keywords: docType:Codelab,skill:Intermediate,language:Python,language:GoLang,category:Cloud,category:AiAndMachineLearning,product:GoogleKubernetesEngine,product:BigQuery,product:AgentPlatform,event:GoogleCloudNext2026
