@@ -22,6 +22,7 @@ import os
 import ssl
 import subprocess
 import time
+from typing import Any
 import urllib.parse
 import uuid
 
@@ -127,50 +128,45 @@ class _ActorCommands:
 
     def run(self, command: str, timeout: float = 600.0) -> CommandResult:
         """Start a command via POST /execute/start and poll GET /execute/status/{job_id}."""
-        client, should_close = self._actor._client._get_http_client()
-        try:
-            start_resp = client.post(
-                "/execute/start",
-                headers=self._actor.headers,
-                json={"command": command, "timeout": timeout},
+        start_resp = self._actor.request(
+            "POST",
+            "/execute/start",
+            json={"command": command, "timeout": timeout},
+        )
+        if start_resp.status_code >= 400:
+            raise RuntimeError(
+                f"Failed to start command on {self._actor.actor_id} "
+                f"(HTTP {start_resp.status_code}): {start_resp.text}"
             )
-            if start_resp.status_code >= 400:
-                raise RuntimeError(
-                    f"Failed to start command on {self._actor.actor_id} "
-                    f"(HTTP {start_resp.status_code}): {start_resp.text}"
-                )
-            job_id = start_resp.json()["job_id"]
+        job_id = start_resp.json()["job_id"]
 
-            deadline = time.monotonic() + timeout
-            while True:
-                status_resp = client.get(
-                    f"/execute/status/{job_id}",
-                    headers=self._actor.headers,
+        deadline = time.monotonic() + timeout
+        while True:
+            status_resp = self._actor.request(
+                "GET",
+                f"/execute/status/{job_id}",
+            )
+            if status_resp.status_code >= 400:
+                raise RuntimeError(
+                    f"Failed to poll job {job_id} on {self._actor.actor_id} "
+                    f"(HTTP {status_resp.status_code}): {status_resp.text}"
                 )
-                if status_resp.status_code >= 400:
-                    raise RuntimeError(
-                        f"Failed to poll job {job_id} on {self._actor.actor_id} "
-                        f"(HTTP {status_resp.status_code}): {status_resp.text}"
-                    )
-                payload = status_resp.json()
-                status = payload.get("status")
-                if status in ("completed", "failed"):
-                    exit_code = payload.get("exit_code")
-                    if exit_code is None:
-                        exit_code = 0 if status == "completed" else 1
-                    return CommandResult(
-                        stdout=payload.get("stdout") or "",
-                        stderr=payload.get("stderr") or "",
-                        exit_code=int(exit_code),
-                    )
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"Command timed out after {timeout}s on {self._actor.actor_id}: {command}"
-                    )
-                time.sleep(self._actor._client.poll_interval)
-        finally:
-            if should_close:
-                client.close()
+            payload = status_resp.json()
+            status = payload.get("status")
+            if status in ("completed", "failed"):
+                exit_code = payload.get("exit_code")
+                if exit_code is None:
+                    exit_code = 0 if status == "completed" else 1
+                return CommandResult(
+                    stdout=payload.get("stdout") or "",
+                    stderr=payload.get("stderr") or "",
+                    exit_code=int(exit_code),
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Command timed out after {timeout}s on {self._actor.actor_id}: {command}"
+                )
+            time.sleep(self._actor.poll_interval)
 
 
 class _ActorFiles:
@@ -185,41 +181,31 @@ class _ActorFiles:
             content.encode("utf-8") if isinstance(content, str) else content
         )
         filename = os.path.basename(path) or path
-        client, should_close = self._actor._client._get_http_client()
-        try:
-            resp = client.post(
-                "/upload",
-                params={"path": path},
-                headers=self._actor.headers,
-                files={"file": (filename, raw_bytes, "text/plain")},
+        resp = self._actor.request(
+            "POST",
+            "/upload",
+            params={"path": path},
+            files={"file": (filename, raw_bytes, "text/plain")},
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(
+                f"Failed to upload '{path}' to {self._actor.actor_id} "
+                f"(HTTP {resp.status_code}): {resp.text}"
             )
-            if resp.status_code >= 400:
-                raise RuntimeError(
-                    f"Failed to upload '{path}' to {self._actor.actor_id} "
-                    f"(HTTP {resp.status_code}): {resp.text}"
-                )
-        finally:
-            if should_close:
-                client.close()
 
     def read(self, path: str) -> str:
         """Download a file from the Judge Actor working directory via GET /download/{path}."""
         clean_path = urllib.parse.quote(path.lstrip("/"), safe="/")
-        client, should_close = self._actor._client._get_http_client()
-        try:
-            resp = client.get(
-                f"/download/{clean_path}",
-                headers=self._actor.headers,
+        resp = self._actor.request(
+            "GET",
+            f"/download/{clean_path}",
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(
+                f"Failed to download '{path}' from {self._actor.actor_id} "
+                f"(HTTP {resp.status_code}): {resp.text}"
             )
-            if resp.status_code >= 400:
-                raise RuntimeError(
-                    f"Failed to download '{path}' from {self._actor.actor_id} "
-                    f"(HTTP {resp.status_code}): {resp.text}"
-                )
-            return resp.text
-        finally:
-            if should_close:
-                client.close()
+        return resp.text
 
 
 class SubstrateActor:
@@ -247,9 +233,26 @@ class SubstrateActor:
     def headers(self) -> dict[str, str]:
         return build_target_headers(self.namespace, self.actor_id)
 
+    @property
+    def poll_interval(self) -> float:
+        return self._client.poll_interval
+
+    def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Send an actor-scoped HTTP request over atenet-router."""
+        merged_headers = dict(self.headers)
+        extra_headers = kwargs.pop("headers", None)
+        if extra_headers:
+            merged_headers.update(extra_headers)
+        return self._client.request(
+            method,
+            path,
+            headers=merged_headers,
+            **kwargs,
+        )
+
     def terminate(self) -> None:
         """Delete the per-actor EgressPolicy and the Judge Actor via kubectl-ate."""
-        self._client._delete_actor_and_policy(
+        self._client.delete_actor_and_policy(
             actor_id=self.actor_id,
             namespace=self.namespace,
         )
@@ -331,6 +334,15 @@ class SubstrateActorClient:
             True,
         )
 
+    def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Send an HTTP request over the configured router/tunnel client."""
+        client, should_close = self._get_http_client()
+        try:
+            return client.request(method, path, **kwargs)
+        finally:
+            if should_close:
+                client.close()
+
     def _cli_global_flags(self) -> list[str]:
         flags: list[str] = []
         if self.token_file:
@@ -345,7 +357,7 @@ class SubstrateActorClient:
         full_args = ["kubectl-ate", *args, *self._cli_global_flags()]
         return self.command_runner(full_args, input_text)
 
-    def _delete_actor_and_policy(self, actor_id: str, namespace: str) -> None:
+    def delete_actor_and_policy(self, actor_id: str, namespace: str) -> None:
         for kind in ("egress-policy", "actor"):
             try:
                 proc = self._run_cli(["delete", kind, actor_id, "-a", namespace])
@@ -362,28 +374,25 @@ class SubstrateActorClient:
                     "Ignoring error deleting %s %s: %s", kind, actor_id, exc
                 )
 
+    _delete_actor_and_policy = delete_actor_and_policy
+
     def _wait_for_health(self, actor: SubstrateActor) -> None:
         deadline = time.monotonic() + self.readiness_timeout
         last_error = "no response"
-        client, should_close = self._get_http_client()
-        try:
-            while True:
-                try:
-                    resp = client.get("/health", headers=actor.headers)
-                    if resp.status_code == 200:
-                        return
-                    last_error = f"HTTP {resp.status_code}"
-                except httpx.HTTPError as exc:
-                    last_error = str(exc)
+        while True:
+            try:
+                resp = actor.request("GET", "/health")
+                if resp.status_code == 200:
+                    return
+                last_error = f"HTTP {resp.status_code}"
+            except httpx.HTTPError as exc:
+                last_error = str(exc)
 
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"Timed out waiting for Judge Actor {actor.actor_id} readiness ({last_error})"
-                    )
-                time.sleep(self.poll_interval)
-        finally:
-            if should_close:
-                client.close()
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out waiting for Judge Actor {actor.actor_id} readiness ({last_error})"
+                )
+            time.sleep(self.poll_interval)
 
     def create_sandbox(
         self,

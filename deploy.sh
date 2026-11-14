@@ -865,13 +865,22 @@ if [ "$RUN_K8S" = "true" ]; then
   source ./setup-env.sh >/dev/null
   envsubst < k8s/configmap.yaml | kubectl apply -f -
 
+  AGENT_SANDBOX_DIGEST=$(gcloud artifacts docker images describe "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:${COMMIT_SHA}" --format='value(image_summary.digest)' 2>/dev/null || true)
+  if [ -n "$AGENT_SANDBOX_DIGEST" ]; then
+    export AGENT_SANDBOX_IMAGE="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:${COMMIT_SHA}@${AGENT_SANDBOX_DIGEST}"
+  else
+    export AGENT_SANDBOX_IMAGE="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:${COMMIT_SHA}"
+  fi
+
   log_info "Applying Agent Substrate WorkerPool, AccessPolicy, and ActorTemplate..."
-  awk '/^---$/{exit} {print}' k8s/substrate.yaml | envsubst | kubectl apply -f -
-  kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml || true
-  envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a hackathon-judge -f -
+  envsubst < k8s/substrate.yaml | kubectl apply -f -
+  kubectl-ate create atespace "$NAMESPACE" 2>/dev/null || true
+  kubectl-ate create access-policy -a "$NAMESPACE" -f k8s/access-policy.yaml || true
+  envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a "$NAMESPACE" -f -
 
   log_info "Waiting for WorkerPool pods and ActorTemplate Golden Snapshot..."
   kubectl -n hackathon-judge wait --for=condition=Ready pod -l workload=hackathon-judge --timeout=600s
+  GOLDEN_TAG=""
   for _ in $(seq 1 60); do
     GOLDEN_TAG=$(kubectl-ate get actor-template judge-sandbox -a hackathon-judge -o json 2>/dev/null | grep -o '"goldenTag"[[:space:]]*:[[:space:]]*"[^"]*"' || true)
     if [ -n "$GOLDEN_TAG" ]; then
@@ -880,6 +889,10 @@ if [ "$RUN_K8S" = "true" ]; then
     fi
     sleep 5
   done
+  if [ -z "$GOLDEN_TAG" ]; then
+    log_error "Timed out waiting for ActorTemplate 'judge-sandbox' Golden Snapshot (goldenTag remained empty)."
+    exit 1
+  fi
 
   log_success "Kubernetes & Agent Substrate resources applied and verified!"
 else

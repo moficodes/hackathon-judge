@@ -95,3 +95,23 @@ async def test_sandbox_direct_adapter_invalid_json(sample_request):
         
         assert response.status == "error"
         assert "Failed to parse sandbox output" in response.error_message
+
+
+@pytest.mark.asyncio
+async def test_sandbox_direct_adapter_forwards_injected_client(sample_request):
+    injected_client = MagicMock()
+    adapter = SandboxDirectAdapter(client=injected_client)
+    mock_result_json = """
+    {
+      "scores": [{"name": "Innovation", "score": 9.0, "reasoning": "DI test"}],
+      "total_score": 9.0,
+      "overall_comments": "DI passed",
+      "confidence_score": 0.95
+    }
+    """
+    with patch('src.adapters.outbound.sandbox_direct.evaluate_repository', return_value=mock_result_json) as mock_eval:
+        response = await adapter.process_message(sample_request)
+        assert response.status == "success"
+        mock_eval.assert_called_once()
+        args, _ = mock_eval.call_args
+        assert args[2] is injected_client

@@ -32,7 +32,7 @@ from src.adapters.outbound.sandbox_direct import SandboxDirectAdapter
 from src.adapters.outbound.adk_agent import ADKAgentAdapter
 from src.adapters.outbound.pubsub_publisher import PubSubPublisherAdapter, MockPubSubPublisherAdapter
 from src.adapters.inbound.pubsub_subscriber import BackgroundSubscriber
-from src.vertex_proxy import router as vertex_proxy_router
+from src.adapters.inbound.model_proxy import create_vertex_proxy_router
 
 # Load environment variables from .env file
 load_dotenv()
@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
     print("Hackathon Judge Agent stopped.")
 
 app = FastAPI(title="Hackathon Judge Agent", lifespan=lifespan)
-app.include_router(vertex_proxy_router)
+app.include_router(create_vertex_proxy_router())
 
 @app.get("/")
 async def root():
