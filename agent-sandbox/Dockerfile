@@ -27,6 +27,7 @@ FROM debian:bookworm-slim
 ENV NODE_VERSION=24.15.0
 ENV PYTHON_VERSION=3.14.4
 ENV GO_PATH=/usr/local/go
+ENV HOME=/home/sandbox
 ENV SANDBOX_DIR=/home/sandbox/app
 ENV PATH=$PATH:$GO_PATH/bin:/home/sandbox/.local/bin
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/lib/playwright
