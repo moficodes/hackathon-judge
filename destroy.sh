@@ -101,10 +101,11 @@ echo "  Dataset: ${BQ_DATASET}"
 # ------------------------------------------------------------------------------
 echo -e "\n${BOLD}${RED}🔥 CAUTION: CRITICAL WARNING 🔥${NC}"
 echo -e "${RED}This script will PERMANENTLY DELETE all provisioned infrastructure including:${NC}"
-echo -e "  - GKE Autopilot Cluster: ${CLUSTER_NAME}"
+echo -e "  - GKE Standard Cluster: ${CLUSTER_NAME}"
 echo -e "  - Artifact Registry Repo: ${ARTIFACT_REPO_NAME}"
 echo -e "  - Pub/Sub Topics & Subscriptions"
 echo -e "  - BigQuery Dataset & Tables: ${BQ_DATASET}"
+echo -e "  - Agent Substrate Snapshot Buckets & Transfer Service Account"
 echo -e "${RED}This action is completely irreversible!${NC}\n"
 
 read -p "Are you absolutely sure you want to proceed? Type 'DESTROY' to confirm: " confirmation
@@ -157,25 +158,25 @@ delete_pubsub_topic "${TASKS_TOPIC:-}"
 delete_pubsub_topic "${RESULTS_TOPIC:-}"
 
 # ------------------------------------------------------------------------------
-# Step 3: Delete GKE Autopilot Cluster
+# Step 3: Delete GKE Standard Cluster
 # ------------------------------------------------------------------------------
-log_step "3/7" "Deleting GKE Autopilot Cluster 🚀"
+log_step "3/7" "Deleting GKE Standard Cluster 🚀"
 
-log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME..."
+log_info "Checking GKE Standard cluster: $CLUSTER_NAME..."
 if gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
-  log_warning "Initiating deletion of GKE Autopilot cluster '$CLUSTER_NAME'..."
+  log_warning "Initiating deletion of GKE Standard cluster '$CLUSTER_NAME'..."
   log_info "NOTE: GKE cluster deletion usually takes 5 to 8 minutes. Please do not interrupt."
   
   if gcloud container clusters delete "$CLUSTER_NAME" \
       --region="$GOOGLE_CLOUD_REGION" \
       --quiet; then
-    log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully deleted!"
+    log_success "GKE Standard cluster '$CLUSTER_NAME' successfully deleted!"
   else
-    log_error "Failed to delete GKE Autopilot cluster."
+    log_error "Failed to delete GKE Standard cluster."
     exit 1
   fi
 else
-  log_info "GKE Autopilot cluster '$CLUSTER_NAME' does not exist. Skipping."
+  log_info "GKE Standard cluster '$CLUSTER_NAME' does not exist. Skipping."
 fi
 
 # ------------------------------------------------------------------------------
@@ -217,21 +218,33 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 6: Delete Stabby Storage Bucket
+# Step 6: Delete Agent Substrate Snapshot Buckets & Service Account
 # ------------------------------------------------------------------------------
-log_step "6/7" "Deleting Stabby Storage Bucket 🪣"
+log_step "6/7" "Deleting Agent Substrate Snapshot Buckets & Service Account 🪣"
 
-log_info "Checking Storage bucket: gs://${GOOGLE_CLOUD_PROJECT}-stabby..."
-if gcloud storage buckets describe "gs://${GOOGLE_CLOUD_PROJECT}-stabby" &> /dev/null; then
-  log_warning "Deleting Storage bucket 'gs://${GOOGLE_CLOUD_PROJECT}-stabby' recursively..."
-  if gcloud storage rm --recursive "gs://${GOOGLE_CLOUD_PROJECT}-stabby"; then
-    log_success "Storage bucket successfully deleted!"
+for bkt in "${GOOGLE_CLOUD_PROJECT}-ate-snapshots" "${GOOGLE_CLOUD_PROJECT}-ate-snapshots-assets" "${GOOGLE_CLOUD_PROJECT}-stabby"; do
+  log_info "Checking Storage bucket: gs://${bkt}..."
+  if gcloud storage buckets describe "gs://${bkt}" &> /dev/null; then
+    log_warning "Deleting Storage bucket 'gs://${bkt}' recursively..."
+    if gcloud storage rm --recursive "gs://${bkt}"; then
+      log_success "Storage bucket 'gs://${bkt}' successfully deleted!"
+    else
+      log_error "Failed to delete Storage bucket 'gs://${bkt}'."
+      exit 1
+    fi
   else
-    log_error "Failed to delete Storage bucket."
-    exit 1
+    log_info "Storage bucket 'gs://${bkt}' does not exist. Skipping."
   fi
+done
+
+SNAPSHOT_TRANSFER_GSA_EMAIL="ate-snapshot-transfer@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
+log_info "Checking Service Account: ${SNAPSHOT_TRANSFER_GSA_EMAIL}..."
+if gcloud iam service-accounts describe "$SNAPSHOT_TRANSFER_GSA_EMAIL" &> /dev/null; then
+  log_warning "Deleting Service Account '${SNAPSHOT_TRANSFER_GSA_EMAIL}'..."
+  gcloud iam service-accounts delete "$SNAPSHOT_TRANSFER_GSA_EMAIL" --quiet
+  log_success "Service Account '${SNAPSHOT_TRANSFER_GSA_EMAIL}' deleted!"
 else
-  log_info "Storage bucket 'gs://${GOOGLE_CLOUD_PROJECT}-stabby' does not exist. Skipping."
+  log_info "Service Account '${SNAPSHOT_TRANSFER_GSA_EMAIL}' does not exist. Skipping."
 fi
 
 # ------------------------------------------------------------------------------

@@ -98,6 +98,8 @@ else
   echo -e "${BLUE}ℹ${NC} Using existing COMMIT_SHA: ${COMMIT_SHA}"
 fi
 
+export SUBSTRATE_WORKER_IMAGE="${SUBSTRATE_WORKER_IMAGE:-ghcr.io/agent-substrate/substrate/ateworker-gvisor:v1.0.0}"
+
 echo -e "${GREEN}✅ Setup complete!${NC}"
 echo -e "\n${BOLD}Active Configuration:${NC}"
 echo -e "  Project:    ${GOOGLE_CLOUD_PROJECT:-unset}"

@@ -305,7 +305,7 @@ else
   if is_val_complete "$existing_CLUSTER_NAME"; then
     CLUSTER_NAME="$existing_CLUSTER_NAME"
   else
-    prompt_var "CLUSTER_NAME" "GKE Autopilot Cluster Name" "${existing_CLUSTER_NAME:-hackathon-judge-cluster}"
+    prompt_var "CLUSTER_NAME" "GKE Standard Cluster Name" "${existing_CLUSTER_NAME:-hackathon-judge-cluster}"
   fi
 
   # Repository Name
@@ -467,11 +467,12 @@ if [ "$RUN_APIS" = "true" ]; then
     "artifactregistry.googleapis.com"     # Artifact Registry
     "cloudbuild.googleapis.com"           # Cloud Build
     "pubsub.googleapis.com"               # Cloud Pub/Sub
-    "aiplatform.googleapis.com"           # Vertex AI (Essential for the judge agent)
+    "aiplatform.googleapis.com"           # Gemini Enterprise Agent Platform (Essential for the judge agent)
     "cloudresourcemanager.googleapis.com" # Cloud Resource Manager (Required for project metadata & IAM)
     "iam.googleapis.com"                  # Identity and Access Management (IAM)
     "bigquery.googleapis.com"             # BigQuery (Essential for evaluations analytics)
     "bigqueryconnection.googleapis.com"   # BigQuery Connection API
+    "storage.googleapis.com"              # Cloud Storage (Required for Agent Substrate snapshots)
   )
 
   log_info "Enabling required services on new project. This might take a minute..."
@@ -529,30 +530,35 @@ RESULTS=()
 
 if [ "$RUN_GKE" = "true" ]; then
   (
-    log_info "Starting GKE Autopilot cluster configuration..."
+    log_info "Starting GKE Standard cluster configuration..."
 
-    log_info "Checking GKE Autopilot cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
+    log_info "Checking GKE Standard cluster: $CLUSTER_NAME in region $GOOGLE_CLOUD_REGION..."
     if ! gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
-      log_warning "GKE Autopilot Cluster does not exist. Initiating creation..."
-      log_info "NOTE: GKE Autopilot cluster creation usually takes 5 to 10 minutes. Please be patient."
+      log_warning "GKE Standard Cluster does not exist. Initiating creation..."
+      log_info "NOTE: GKE Standard cluster creation usually takes 5 to 10 minutes. Please be patient."
 
-      if gcloud container clusters create-auto "$CLUSTER_NAME" \
+      if gcloud container clusters create "$CLUSTER_NAME" \
           --region="$GOOGLE_CLOUD_REGION" \
+          --release-channel=rapid \
+          --machine-type=c3-standard-4 \
+          --num-nodes=3 \
+          --workload-pool="${GOOGLE_CLOUD_PROJECT}.svc.id.goog" \
+          --sandbox="type=gvisor" \
           --labels dev-tutorial=airoadshow \
           --project="$GOOGLE_CLOUD_PROJECT"; then
-        log_success "GKE Autopilot cluster '$CLUSTER_NAME' successfully created!"
+        log_success "GKE Standard cluster '$CLUSTER_NAME' successfully created!"
       else
         log_error "Failed to create GKE cluster. Please check your quota settings or regional resources."
         exit 1
       fi
     else
-      log_success "GKE Autopilot cluster '$CLUSTER_NAME' already exists."
+      log_success "GKE Standard cluster '$CLUSTER_NAME' already exists."
     fi
   ) 2>&1 | prefix_log "GKE" "${BLUE}" &
   PIDS+=($!)
   RESULTS+=("GKE")
 else
-  log_info "Skipping Step 7: GKE Autopilot cluster configuration (Bypassed by CLI flag)."
+  log_info "Skipping Step 7: GKE Standard cluster configuration (Bypassed by CLI flag)."
 fi
 
 # ------------------------------------------------------------------------------
@@ -750,10 +756,10 @@ if [ "$FAILURES" -gt 0 ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# Step 11: Kubernetes Deployment
+# Step 11: Kubernetes & Agent Substrate v1.0.0 Deployment
 # ------------------------------------------------------------------------------
 if [ "$RUN_K8S" = "true" ]; then
-  log_step "11/11" "Kubernetes Deployment ☸️"
+  log_step "11/11" "Kubernetes & Agent Substrate Deployment ☸️"
 
   log_info "Getting credentials for GKE cluster: $CLUSTER_NAME..."
   if ! gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$GOOGLE_CLOUD_REGION"; then
@@ -761,22 +767,58 @@ if [ "$RUN_K8S" = "true" ]; then
     exit 1
   fi
 
-  log_info "Installing Agent Sandbox CRDs..."
+  # Pin Agent Substrate v1.0.0
+  SUBSTRATE_VERSION="v1.0.0"
+  SUBSTRATE_IMAGE_REPO="${SUBSTRATE_IMAGE_REPO:-ghcr.io/agent-substrate/substrate}"
+  SNAPSHOT_BUCKET="${GOOGLE_CLOUD_PROJECT}-ate-snapshots"
+  SNAPSHOT_TRANSFER_GSA_NAME="ate-snapshot-transfer"
+  SNAPSHOT_TRANSFER_GSA_EMAIL="${SNAPSHOT_TRANSFER_GSA_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 
-  # Pinned: upstream ships breaking changes; bump deliberately.
-  AGENT_SANDBOX_VERSION="v1.0.11"
-  AGENT_SANDBOX_RELEASE_URL="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}"
+  log_info "Ensuring Cloud Storage snapshot buckets for Agent Substrate (${SUBSTRATE_VERSION})..."
+  for bkt in "$SNAPSHOT_BUCKET" "${SNAPSHOT_BUCKET}-assets"; do
+    if ! gcloud storage buckets describe "gs://${bkt}" &> /dev/null; then
+      gcloud storage buckets create "gs://${bkt}" --location="$GOOGLE_CLOUD_REGION" --uniform-bucket-level-access
+    fi
+  done
 
-  if ! kubectl apply -f "${AGENT_SANDBOX_RELEASE_URL}/sandbox.yaml"; then
-    log_error "Failed to install Agent Sandbox core (${AGENT_SANDBOX_VERSION})."
-    exit 1
+  log_info "Ensuring snapshot transfer service account (${SNAPSHOT_TRANSFER_GSA_EMAIL})..."
+  if ! gcloud iam service-accounts describe "$SNAPSHOT_TRANSFER_GSA_EMAIL" &> /dev/null; then
+    gcloud iam service-accounts create "$SNAPSHOT_TRANSFER_GSA_NAME" \
+      --display-name="Agent Substrate Snapshot Transfer"
   fi
-  if ! kubectl apply -f "${AGENT_SANDBOX_RELEASE_URL}/extensions.yaml"; then
-    log_error "Failed to install Agent Sandbox extensions (${AGENT_SANDBOX_VERSION})."
-    exit 1
-  fi
+  gcloud storage buckets add-iam-policy-binding "gs://${SNAPSHOT_BUCKET}" \
+    --member="serviceAccount:${SNAPSHOT_TRANSFER_GSA_EMAIL}" \
+    --role="roles/storage.objectUser" >/dev/null
+  gcloud iam service-accounts add-iam-policy-binding "$SNAPSHOT_TRANSFER_GSA_EMAIL" \
+    --member="serviceAccount:${GOOGLE_CLOUD_PROJECT}.svc.id.goog[ate-system/ate-snapshot-controller]" \
+    --role="roles/iam.workloadIdentityUser" >/dev/null
 
-  log_info "Applying Kubernetes Namespace..."
+  log_info "Installing Agent Substrate (${SUBSTRATE_VERSION}) and kubectl-ate..."
+  SUBSTRATE_SRC_DIR="${TMPDIR:-/tmp}/agent-substrate-${SUBSTRATE_VERSION}"
+  if [ ! -d "${SUBSTRATE_SRC_DIR}/.git" ]; then
+    git clone --quiet --branch "$SUBSTRATE_VERSION" --depth 1 https://github.com/agent-substrate/substrate "$SUBSTRATE_SRC_DIR"
+  fi
+  mkdir -p "${HOME}/.local/bin"
+  export PATH="${HOME}/.local/bin:${PATH}"
+  (cd "$SUBSTRATE_SRC_DIR" && GOWORK=off go build -ldflags "-X=go.ate.dev/substrate/internal/version.Version=${SUBSTRATE_VERSION}" -o "${HOME}/.local/bin/kubectl-ate" ./cmd/kubectl-ate)
+
+  (cd "$SUBSTRATE_SRC_DIR" && GOWORK=off go run ./cmd/ate-setup deploy ate-system \
+    --sandbox-classes="gvisor" \
+    --credential-provider='{"enabled":false}' \
+    --snapshot-location="gs://${SNAPSHOT_BUCKET}/snapshots/" \
+    --snapshot-transfer-gsa-name="$SNAPSHOT_TRANSFER_GSA_NAME" \
+    --ingress-allowed-spiffe-ids="spiffe://cluster.local/ns/hackathon-judge/sa/hackathon-judge-sa,spiffe://cluster.local/ns/ate-system/sa/atenet-router" \
+    --image-repo "$SUBSTRATE_IMAGE_REPO" \
+    --image-tag "$SUBSTRATE_VERSION")
+
+  log_info "Waiting for Agent Substrate control plane and atenet-router in ate-system..."
+  kubectl -n ate-system wait --for=condition=Available deploy --all --timeout=600s
+  kubectl -n ate-system rollout status ds/atelet --timeout=600s
+
+  WORKER_DIGEST=$(cd "$SUBSTRATE_SRC_DIR" && GOWORK=off go run github.com/google/go-containerregistry/cmd/crane@latest digest "${SUBSTRATE_IMAGE_REPO}/ateworker-gvisor:${SUBSTRATE_VERSION}")
+  export SUBSTRATE_WORKER_IMAGE="${SUBSTRATE_IMAGE_REPO}/ateworker-gvisor:${SUBSTRATE_VERSION}@${WORKER_DIGEST}"
+
+  log_info "Applying Kubernetes Namespace (with ate.dev/api-access=true)..."
   kubectl apply -f k8s/namespace.yaml
 
   log_info "Applying Kubernetes Service Accounts..."
@@ -807,39 +849,34 @@ if [ "$RUN_K8S" = "true" ]; then
     done
   }
 
-  log_info "Configuring IAM permissions for Kubernetes Service Accounts via Workload Identity..."
-
-  # hackathon-judge-sa needs BigQuery reader/writer and Pub/Sub reader/writer permissions
+  log_info "Configuring IAM permissions for Judge Orchestrator Service Account via Workload Identity..."
+  # Only hackathon-judge-sa receives IAM bindings; Judge Actors run with zero credentials.
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.dataEditor"
   bind_workload_identity "hackathon-judge-sa" "roles/bigquery.jobUser"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.publisher"
   bind_workload_identity "hackathon-judge-sa" "roles/pubsub.subscriber"
   bind_workload_identity "hackathon-judge-sa" "roles/aiplatform.user"
 
-  # hackathon-judge-sandbox-sa needs Vertex AI user permissions for judging logic
-  bind_workload_identity "hackathon-judge-sandbox-sa" "roles/aiplatform.user"
-
   log_info "Applying Kubernetes ConfigMap with environment variables..."
   # Source setup-env.sh before envsubst to ensure all variables are set and exported
   source ./setup-env.sh >/dev/null
   envsubst < k8s/configmap.yaml | kubectl apply -f -
 
-  log_info "Applying Sandbox Router..."
-  kubectl apply -f k8s/sandbox_router.yaml
+  log_info "Applying Agent Substrate WorkerPool, AccessPolicy, and ActorTemplate..."
+  awk '/^---$/{exit} {print}' k8s/substrate.yaml | envsubst | kubectl apply -f -
+  kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml || true
+  envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a hackathon-judge -f -
 
-  log_info "Waiting for Sandbox Router deployment to be ready..."
-  if ! kubectl rollout status deployment/sandbox-router -n agent-sandbox-system --timeout=300s; then
-    log_error "Sandbox Router deployment failed to reach ready state within 5 minutes."
-    exit 1
-  fi
-  log_info "The Sandbox Router is deployed (internal only) at: sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080"
-
-  log_info "Applying Sandbox NetworkPolicy..."
-  kubectl apply -f k8s/sandbox-networkpolicy.yaml
-
-  log_info "Applying Sandbox Infrastructure (Claim Template, Warmpool)..."
-  envsubst < k8s/sandbox-claim-template.yaml | kubectl apply -f -
-  kubectl apply -f k8s/sandbox-warmpool.yaml
+  log_info "Waiting for WorkerPool pods and ActorTemplate Golden Snapshot..."
+  kubectl -n hackathon-judge wait --for=condition=Ready pod -l workload=hackathon-judge --timeout=600s
+  for _ in $(seq 1 60); do
+    GOLDEN_TAG=$(kubectl-ate get actor-template judge-sandbox -a hackathon-judge -o json 2>/dev/null | grep -o '"goldenTag"[[:space:]]*:[[:space:]]*"[^"]*"' || true)
+    if [ -n "$GOLDEN_TAG" ]; then
+      log_success "ActorTemplate 'judge-sandbox' Golden Snapshot ready (${GOLDEN_TAG})."
+      break
+    fi
+    sleep 5
+  done
 
   log_info "Applying Application Gateway..."
   kubectl apply -f k8s/gateway.yaml
@@ -878,7 +915,7 @@ if [ "$RUN_K8S" = "true" ]; then
 
   APP_IP=$(wait_for_gateway_ip "hackathon-judge-gateway" "hackathon-judge")
 
-  log_success "Kubernetes resources applied and verified!"
+  log_success "Kubernetes & Agent Substrate resources applied and verified!"
 else
   log_info "Skipping Step 11: Kubernetes deployment (Bypassed by CLI flag)."
   APP_IP="<Skipped>"
@@ -891,7 +928,7 @@ log_header "Infrastructure Setup, Build & Application Deployment Complete! 🎉"
 log_success "All services built, docker images stored in Artifact Registry, and application deployed to GKE."
 log_info "To view your Artifact Registry repository, visit:"
 echo "  https://console.cloud.google.com/artifacts/docker/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REGISTRY_LOCATION}/${ARTIFACT_REPO_NAME}"
-log_info "To view your GKE Autopilot cluster, visit:"
+log_info "To view your GKE Standard cluster, visit:"
 echo "  https://console.cloud.google.com/kubernetes/list/overview?project=${GOOGLE_CLOUD_PROJECT}"
 
 echo -e "\n${BOLD}Access URLs:${NC}"

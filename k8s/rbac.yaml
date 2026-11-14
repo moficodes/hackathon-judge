@@ -16,19 +16,19 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   namespace: hackathon-judge
-  name: sandbox-claim-manager
+  name: judge-actor-manager
 rules:
-- apiGroups: ["extensions.agents.x-k8s.io"]
-  resources: ["sandboxclaims"]
+- apiGroups: ["ate.dev"]
+  resources: ["actors", "actortemplates", "workerpools", "egresspolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["agents.x-k8s.io"]
-  resources: ["sandboxes"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "pods/exec", "services"]
+  verbs: ["get", "list", "watch", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: sandbox-claim-manager-binding
+  name: judge-actor-manager-binding
   namespace: hackathon-judge
 subjects:
 - kind: ServiceAccount
@@ -36,5 +36,5 @@ subjects:
   namespace: hackathon-judge
 roleRef:
   kind: Role
-  name: sandbox-claim-manager
+  name: judge-actor-manager
   apiGroup: rbac.authorization.k8s.io

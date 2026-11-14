@@ -12,6 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent
+  namespace: hackathon-judge
+  labels:
+    app: agent
+spec:
+  selector:
+    app: agent
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  - name: model-proxy
+    port: 8082
+    targetPort: 8000
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,6 +80,12 @@ spec:
             configMapKeyRef:
               name: hackathon-judge-config
               key: RESULTS_TOPIC
+        - name: SANDBOX_TEMPLATE
+          valueFrom:
+            configMapKeyRef:
+              name: hackathon-judge-config
+              key: SANDBOX_TEMPLATE
+              optional: true
         - name: SANDBOX_WARMPOOL
           valueFrom:
             configMapKeyRef:
@@ -85,3 +109,25 @@ spec:
               name: hackathon-judge-config
               key: AGENT_TYPE
               optional: true
+        volumeMounts:
+        - name: router-client
+          mountPath: /run/router-client
+          readOnly: true
+      volumes:
+      - name: router-client
+        projected:
+          sources:
+          - serviceAccountToken:
+              audience: api.ate-system.svc
+              expirationSeconds: 3600
+              path: ate-api-token
+          - clusterTrustBundle:
+              signerName: servicedns.podcert.ate.dev/identity
+              labelSelector:
+                matchLabels:
+                  podcert.ate.dev/canarying: live
+              path: trust-bundle.pem
+          - podCertificate:
+              signerName: podidentity.podcert.ate.dev/identity
+              keyType: ECDSAP256
+              credentialBundlePath: credential-bundle.pem

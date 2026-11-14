@@ -12,15 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: extensions.agents.x-k8s.io/v1beta1
-kind: SandboxWarmPool
+# Agent Substrate v1.0.0 Atespace AccessPolicy (protojson-shaped ateapi.AccessPolicy)
+# Applied via: kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml
 metadata:
-  name: hackathon-sandboxwarmpool
-  namespace: hackathon-judge
-spec:
-  updateStrategy:
-    type: Recreate
-  replicas: 5
-  sandboxTemplateRef:
-    # This name must exactly match the 'metadata.name' of your SandboxTemplate.
-    name: sandbox-hackathon-judge-template
+  name: default
+bindings:
+- role: editor
+  members:
+  - "user:system:serviceaccount:hackathon-judge:hackathon-judge-sa"
