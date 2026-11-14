@@ -164,6 +164,9 @@ log_step "3/7" "Deleting GKE Standard Cluster 🚀"
 
 log_info "Checking GKE Standard cluster: $CLUSTER_NAME..."
 if gcloud container clusters describe "$CLUSTER_NAME" --region="$GOOGLE_CLOUD_REGION" &> /dev/null; then
+  log_info "Releasing ate-system PersistentVolumeClaims before cluster deletion..."
+  kubectl -n ate-system scale sts/postgres --replicas=0 2>/dev/null || true
+  kubectl -n ate-system delete pvc --all --wait=true --timeout=60s 2>/dev/null || true
   log_warning "Initiating deletion of GKE Standard cluster '$CLUSTER_NAME'..."
   log_info "NOTE: GKE cluster deletion usually takes 5 to 8 minutes. Please do not interrupt."
   
@@ -226,7 +229,7 @@ for bkt in "${GOOGLE_CLOUD_PROJECT}-ate-snapshots" "${GOOGLE_CLOUD_PROJECT}-ate-
   log_info "Checking Storage bucket: gs://${bkt}..."
   if gcloud storage buckets describe "gs://${bkt}" &> /dev/null; then
     log_warning "Deleting Storage bucket 'gs://${bkt}' recursively..."
-    if gcloud storage rm --recursive "gs://${bkt}"; then
+    if CLOUDSDK_STORAGE_THREAD_COUNT=1 CLOUDSDK_STORAGE_PROCESS_COUNT=1 gcloud storage rm --recursive "gs://${bkt}"; then
       log_success "Storage bucket 'gs://${bkt}' successfully deleted!"
     else
       log_error "Failed to delete Storage bucket 'gs://${bkt}'."
