@@ -898,7 +898,7 @@ if [ "$RUN_K8S" = "true" ]; then
   kubectl -n hackathon-judge wait --for=condition=Ready pod -l workload=hackathon-judge --timeout=600s
   GOLDEN_TAG=""
   for _ in $(seq 1 60); do
-    GOLDEN_TAG=$(kubectl-ate get actor-template judge-sandbox -a hackathon-judge -o json 2>/dev/null | grep -o '"goldenTag"[[:space:]]*:[[:space:]]*"[^"]*"' || true)
+    GOLDEN_TAG=$(kubectl-ate get actor-template judge-sandbox -a hackathon-judge -o json 2>/dev/null | grep -oE '"(goldenTag|snapshotTime)"[[:space:]]*:[[:space:]]*"[^"]*"' || true)
     if [ -n "$GOLDEN_TAG" ]; then
       log_success "ActorTemplate 'judge-sandbox' Golden Snapshot ready (${GOLDEN_TAG})."
       break
