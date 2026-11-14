@@ -220,7 +220,7 @@ def test_create_sandbox_provisions_actor_egress_policy_waits_for_health_and_term
         assert hdrs["X-Ate-Target-Namespace"] == "hackathon-judge"
         assert hdrs["X-Ate-Target-Actor"] == actor.actor_id
         assert hdrs["X-Ate-Target-Name"] == actor.actor_id
-        assert hdrs["X-Ate-Target-Port"] == "8888"
+        assert hdrs["X-Ate-Target-Port"] == "80"
         assert hdrs["ate-target-actor"] == f"hackathon-judge/{actor.actor_id}"
 
     # Verify terminate() deletes egress-policy and actor and suppresses cleanup errors
@@ -346,7 +346,7 @@ def test_actor_commands_run_polls_async_execution_and_files_write_read():
         assert hdrs["x-ate-target-namespace"] == "hackathon-judge"
         assert hdrs["x-ate-target-actor"] == "judge-deadbeef"
         assert hdrs["x-ate-target-name"] == "judge-deadbeef"
-        assert hdrs["x-ate-target-port"] == "8888"
+        assert hdrs["x-ate-target-port"] == "80"
         assert hdrs["ate-target-actor"] == "hackathon-judge/judge-deadbeef"
 
 
@@ -491,7 +491,7 @@ def test_end_to_end_substrate_actor_client_against_real_agent_sandbox_app(
     for hdrs in recorded_headers:
         assert hdrs["x-ate-target-actor"] == actor.actor_id
         assert hdrs["x-ate-target-atespace"] == "hackathon-judge"
-        assert hdrs["x-ate-target-port"] == "8888"
+        assert hdrs["x-ate-target-port"] == "80"
 
 
 def test_agent_packaging_removes_k8s_agent_sandbox_and_installs_kubectl_ate():

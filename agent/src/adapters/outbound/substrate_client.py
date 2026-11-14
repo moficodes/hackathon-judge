@@ -34,7 +34,7 @@ DEFAULT_ROUTER_URL = "https://atenet-router.ate-system.svc:443"
 DEFAULT_TUNNEL_URL = "http://localhost:8080"
 DEFAULT_SANDBOX_TEMPLATE = "judge-sandbox"
 DEFAULT_SANDBOX_NAMESPACE = "hackathon-judge"
-DEFAULT_ACTOR_PORT = "8888"
+DEFAULT_ACTOR_PORT = "80"
 
 DEFAULT_CLIENT_CERT_PATHS = (
     "/run/router-client/credential-bundle.pem",

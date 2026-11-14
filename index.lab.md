@@ -159,7 +159,7 @@ envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -f -
 ```
 
 > **Why we use an ActorTemplate and Golden Snapshot:**
-> When `judge-sandbox` is created, Agent Substrate boots a builder actor from the `agent-sandbox` container image, waits for its `/health` wakeup probe on port `8888` to return `200 OK`, and checkpoints its initialized gVisor memory and filesystem state to Cloud Storage (`status.goldenTag`). Every subsequent **Judge Actor** restores directly from this **Golden Snapshot** in sub-second time and is deleted after a single evaluation so cross-submission state never leaks.
+> When `judge-sandbox` is created, Agent Substrate boots a builder actor from the `agent-sandbox` container image, waits for its `/health` wakeup probe on port `80` to return `200 OK`, and checkpoints its initialized gVisor memory and filesystem state to Cloud Storage (`status.goldenSnapshotStatus.snapshotTime`). Every subsequent **Judge Actor** restores directly from this **Golden Snapshot** in sub-second time and is deleted after a single evaluation so cross-submission state never leaks.
 
 Verify that the worker pool pods are running and the `ActorTemplate` has produced its Golden Snapshot:
 
@@ -311,7 +311,7 @@ graph TD
     AteAPI["Agent Substrate API (ActorTemplate & EgressPolicy)"]:::sandbox
     Router["atenet-router (mTLS Ingress Proxy)"]:::sandbox
     Pool["WorkerPool (ateworker-gvisor Pods)"]:::sandbox
-    Actor["Zero-Credential Judge Actor (FastAPI :8888)"]:::sandbox
+    Actor["Zero-Credential Judge Actor (FastAPI :80)"]:::sandbox
     Judge["Antigravity SDK Judge (app.judge)"]:::sandbox
     BQ[("BigQuery Tables")]:::bq
     Gemini["Gemini on Agent Platform"]:::bq
@@ -325,7 +325,7 @@ graph TD
     AteAPI -->|6. Restore from Golden Snapshot| Pool
     Pool -->|7. Host gVisor Sandbox| Actor
     Worker -->|8. mTLS POST /execute/start & Poll /execute/status| Router
-    Router -->|9. Forward to Port 8888| Actor
+    Router -->|9. Forward to Port 80| Actor
 
     Actor -->|10. Clone Repo & Start python -m app.judge| Judge
     Judge -->|11. Build, Test & Inspect Code| Actor
@@ -345,7 +345,7 @@ graph TD
 
 * **Judge Orchestrator (`agent`)**: Subscribes to `judging-tasks`, runs the ADK coordinator agent, manages the lifecycle of ephemeral **Judge Actors** via `kubectl-ate`, communicates with actors through `atenet-router` over mTLS using pod identity certificates (`/run/router-client`), and hosts the internal **Model Proxy** (`/vertex-proxy`).
 * **WorkerPool (`judge-workerpool`) & ActorTemplate (`judge-sandbox`)**: The `WorkerPool` runs gVisor worker pods (`ateworker-gvisor`), while the `ActorTemplate` defines the **Golden Snapshot** (`SNAPSHOT_FIDELITY_MEMORY`) of the `agent-sandbox` container with `egress-mitm.ate.dev` and `system-roots.ate.dev` trust bundles pre-mounted.
-* **`atenet-router` & Asynchronous Command Polling**: `atenet-router` routes mTLS requests from the Judge Orchestrator to the target Judge Actor using `X-Ate-Target-Atespace`, `X-Ate-Target-Actor`, and `X-Ate-Target-Port: 8888` headers. Because repository cloning and LLM grading can take several minutes, the orchestrator starts commands asynchronously via `POST /execute/start` and polls `GET /execute/status/{job_id}` every 2 seconds so individual HTTP requests remain sub-second.
+* **`atenet-router` & Asynchronous Command Polling**: `atenet-router` routes mTLS requests from the Judge Orchestrator to the target Judge Actor using `X-Ate-Target-Atespace`, `X-Ate-Target-Actor`, and `X-Ate-Target-Port: 80` headers. Because repository cloning and LLM grading can take several minutes, the orchestrator starts commands asynchronously via `POST /execute/start` and polls `GET /execute/status/{job_id}` every 2 seconds so individual HTTP requests remain sub-second.
 * **Per-Actor `EgressPolicy` & Zero-Credential Model Proxy**: Each Judge Actor runs with zero Google Cloud credentials and has no access to the GKE metadata server. Its `EgressPolicy` permits only outbound HTTPS (`:443`) to clone public repositories and download packages (inspected via `atenet-egress` MITM CA) plus HTTP (`:8000` / `:8082`) to `agent.hackathon-judge.svc.cluster.local`. When `app/judge.py` invokes the Antigravity SDK (`VertexEndpoint` pointed at `MODEL_PROXY_BASE_URL`), the Judge Orchestrator's `/vertex-proxy` validates that the path matches `^v1(beta1)?/projects/.../locations/.../publishers/google/models/...:(generateContent|streamGenerateContent)$` (rejecting any other path with `403 Forbidden`), attaches its own Workload Identity token, and streams the **Gemini on Agent Platform** response back to the actor.
 
 ---

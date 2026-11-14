@@ -18,7 +18,7 @@ graph TD
     PubSub -->|Subscribes| Agent[Judge Orchestrator Pods]
     Agent -->|kubectl-ate create actor & EgressPolicy| AteAPI[Agent Substrate API Server]
     Agent -->|mTLS HTTP + X-Ate-Target-*| Router[atenet-router]
-    Router -->|Routes to port 8888| Actor[gVisor Judge Actor on WorkerPool]
+    Router -->|Routes to port 80| Actor[gVisor Judge Actor on WorkerPool]
     Actor -->|Zero-Credential Model Proxy /vertex-proxy| Agent
     Agent -->|Workload Identity| AgentPlatform[Gemini on Agent Platform]
     Agent -->|Pub/Sub| PubSub

@@ -168,7 +168,8 @@ def test_substrate_manifest_workerpool_and_actor_template_headroom_and_fields():
 
     probe = container["wakeupProbe"]["httpGet"]
     assert probe["path"] == "/health"
-    assert probe["port"] == 8888
+    assert probe["port"] == 80
+    assert "NET_BIND_SERVICE" in container["securityContext"]["capabilities"]["add"]
 
 
 def test_access_policy_manifest_grants_editor_role_to_orchestrator_sa():

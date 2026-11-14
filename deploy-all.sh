@@ -792,17 +792,28 @@ if [ "$RUN_K8S" = "true" ]; then
     fi
   done
 
+  PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
+  ATE_API_SERVER_WI_PRINCIPAL="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${GOOGLE_CLOUD_PROJECT}.svc.id.goog/subject/ns/ate-system/sa/ate-api-server"
+
   log_info "Ensuring snapshot transfer service account (${SNAPSHOT_TRANSFER_GSA_EMAIL})..."
   if ! gcloud iam service-accounts describe "$SNAPSHOT_TRANSFER_GSA_EMAIL" &> /dev/null; then
     gcloud iam service-accounts create "$SNAPSHOT_TRANSFER_GSA_NAME" \
       --display-name="Agent Substrate Snapshot Transfer"
   fi
-  gcloud storage buckets add-iam-policy-binding "gs://${SNAPSHOT_BUCKET}" \
-    --member="serviceAccount:${SNAPSHOT_TRANSFER_GSA_EMAIL}" \
-    --role="roles/storage.objectUser" >/dev/null
+  for role in "roles/storage.objectUser" "roles/storage.objectAdmin" "roles/storage.legacyBucketReader"; do
+    gcloud storage buckets add-iam-policy-binding "gs://${SNAPSHOT_BUCKET}" \
+      --member="serviceAccount:${SNAPSHOT_TRANSFER_GSA_EMAIL}" \
+      --role="$role" >/dev/null
+    gcloud storage buckets add-iam-policy-binding "gs://${SNAPSHOT_BUCKET}" \
+      --member="$ATE_API_SERVER_WI_PRINCIPAL" \
+      --role="$role" >/dev/null
+  done
   gcloud iam service-accounts add-iam-policy-binding "$SNAPSHOT_TRANSFER_GSA_EMAIL" \
     --member="serviceAccount:${GOOGLE_CLOUD_PROJECT}.svc.id.goog[ate-system/ate-snapshot-controller]" \
     --role="roles/iam.workloadIdentityUser" >/dev/null
+  gcloud iam service-accounts add-iam-policy-binding "$SNAPSHOT_TRANSFER_GSA_EMAIL" \
+    --member="$ATE_API_SERVER_WI_PRINCIPAL" \
+    --role="roles/iam.serviceAccountTokenCreator" >/dev/null
 
   log_info "Installing Agent Substrate (${SUBSTRATE_VERSION}) and kubectl-ate..."
   SUBSTRATE_SRC_DIR="${TMPDIR:-/tmp}/agent-substrate-${SUBSTRATE_VERSION}"

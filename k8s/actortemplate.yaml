@@ -23,7 +23,11 @@ workerSelector:
 containers:
 - name: hackathon-judge
   image: "${AGENT_SANDBOX_IMAGE}"
-  command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8888"]
+  command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
+  securityContext:
+    capabilities:
+      add:
+      - NET_BIND_SERVICE
   env:
   - name: HOME
     value: "/home/sandbox"
@@ -55,7 +59,7 @@ containers:
   wakeupProbe:
     httpGet:
       path: /health
-      port: 8888
+      port: 80
 volumes:
 - name: system-info
   systemInfo:
