@@ -137,16 +137,17 @@ source ./setup-env.sh
 Apply the `WorkerPool` resource (`judge-workerpool`), which maintains 3 `ateworker-gvisor` worker pods in the `hackathon-judge` namespace:
 
 ```bash
-awk '/^---$/{exit} {print}' k8s/substrate.yaml | envsubst | kubectl apply -f -
+envsubst < k8s/substrate.yaml | kubectl apply -f -
 ```
 
 > **Why we configure `4608Mi` memory on the WorkerPool:**
 > Each `ateworker-gvisor` pod reserves `64Mi` of overhead from its container memory limit (`limits.memory`). Configuring `4608Mi` (`4.5 GiB`) on the `WorkerPool` pod guarantees at least `4096Mi` (`4 GiB`) of allocatable memory so every `4 GiB` Judge Actor schedules cleanly.
 
-### Apply AccessPolicy (`k8s/access-policy.yaml`)
-Grant the Judge Orchestrator service account (`hackathon-judge-sa`) OpenFGA `editor` permissions in the `hackathon-judge` atespace:
+### Create Atespace & Apply AccessPolicy (`k8s/access-policy.yaml`)
+Create the `hackathon-judge` atespace and grant the Judge Orchestrator service account (`hackathon-judge-sa`) OpenFGA `editor` permissions:
 
 ```bash
+kubectl-ate create atespace hackathon-judge 2>/dev/null || true
 kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml
 ```
 

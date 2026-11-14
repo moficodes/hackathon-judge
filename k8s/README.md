@@ -57,9 +57,10 @@ To apply the manifests manually against a cluster with Agent Substrate `v1.0.0` 
    envsubst < k8s/configmap.yaml | kubectl apply -f -
    ```
 
-3. Apply the Agent Substrate `WorkerPool`, `AccessPolicy`, and `ActorTemplate` (**Golden Snapshot**):
+3. Apply the Agent Substrate `WorkerPool`, `atespace`, `AccessPolicy`, and `ActorTemplate` (**Golden Snapshot**):
    ```bash
-   awk '/^---$/{exit} {print}' k8s/substrate.yaml | envsubst | kubectl apply -f -
+   envsubst < k8s/substrate.yaml | kubectl apply -f -
+   kubectl-ate create atespace hackathon-judge 2>/dev/null || true
    kubectl-ate create access-policy -a hackathon-judge -f k8s/access-policy.yaml
    envsubst < k8s/actortemplate.yaml | kubectl-ate create actor-template -a hackathon-judge -f -
    ```

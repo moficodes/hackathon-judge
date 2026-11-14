@@ -109,9 +109,9 @@ def _parse_memory_mib(val: str | int) -> float:
 
 def test_substrate_manifest_workerpool_and_actor_template_headroom_and_fields():
     docs = _load_yaml_docs(K8S_DIR / "substrate.yaml")
-    worker_pools = [d for d in docs if d.get("kind") == "WorkerPool"]
-    assert len(worker_pools) == 1
-    wp = worker_pools[0]
+    assert len(docs) == 1
+    wp = docs[0]
+    assert wp["kind"] == "WorkerPool"
     assert wp["apiVersion"] == "ate.dev/v1"
     assert wp["metadata"]["name"] == "judge-workerpool"
     assert wp["metadata"]["namespace"] == "hackathon-judge"
@@ -130,54 +130,45 @@ def test_substrate_manifest_workerpool_and_actor_template_headroom_and_fields():
     assert wp_limit_mib >= 4096 + 64
     assert wp_req_mib >= 4096 + 64
 
-    # Verify ActorTemplate (in substrate.yaml and k8s/actortemplate.yaml)
-    template_docs = [
-        d for d in docs if d.get("kind") == "ActorTemplate" or "snapshotConfig" in d
-    ]
-    assert len(template_docs) == 1
+    # Verify k8s/actortemplate.yaml is the single source of truth for ActorTemplate
     at_standalone = _load_yaml_docs(K8S_DIR / "actortemplate.yaml")
     assert len(at_standalone) == 1
+    tmpl = at_standalone[0]
 
-    for tmpl in (template_docs[0], at_standalone[0]):
-        assert tmpl["metadata"]["name"] == "judge-sandbox"
-        assert tmpl["metadata"]["atespace"] == "hackathon-judge"
-        assert tmpl["workerSelector"]["matchLabels"]["workload"] == "hackathon-judge"
-        assert tmpl["resources"]["limits"]["cpuMillicores"] == 2000
-        assert tmpl["resources"]["limits"]["memoryBytes"] == 4294967296
-        assert (
-            wp_limit_mib - _parse_memory_mib(tmpl["resources"]["limits"]["memoryBytes"])
-            >= 64
-        )
-        assert (
-            tmpl["snapshotConfig"]["preferredFidelity"] == "SNAPSHOT_FIDELITY_MEMORY"
-        )
+    assert tmpl["metadata"]["name"] == "judge-sandbox"
+    assert tmpl["metadata"]["atespace"] == "hackathon-judge"
+    assert tmpl["workerSelector"]["matchLabels"]["workload"] == "hackathon-judge"
+    assert tmpl["resources"]["limits"]["cpuMillicores"] == 2000
+    assert tmpl["resources"]["limits"]["memoryBytes"] == 4294967296
+    assert (
+        wp_limit_mib - _parse_memory_mib(tmpl["resources"]["limits"]["memoryBytes"])
+        >= 64
+    )
+    assert tmpl["snapshotConfig"]["preferredFidelity"] == "SNAPSHOT_FIDELITY_MEMORY"
 
-        # Verify trust bundles (egress-mitm.ate.dev and system-roots.ate.dev)
-        trust_names: set[str] = set(tmpl.get("trustBundles", []))
-        for vol in tmpl.get("volumes", []):
-            for ds in vol.get("systemInfo", {}).get("dataSources", []):
-                trust_names.update(ds.get("trustBundle", {}).get("names", []))
-        assert {"egress-mitm.ate.dev", "system-roots.ate.dev"}.issubset(trust_names)
+    # Verify trust bundles (egress-mitm.ate.dev and system-roots.ate.dev)
+    trust_names: set[str] = set(tmpl.get("trustBundles", []))
+    for vol in tmpl.get("volumes", []):
+        for ds in vol.get("systemInfo", {}).get("dataSources", []):
+            trust_names.update(ds.get("trustBundle", {}).get("names", []))
+    assert {"egress-mitm.ate.dev", "system-roots.ate.dev"}.issubset(trust_names)
 
-        container = tmpl["containers"][0]
-        assert (
-            container["image"]
-            == "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:$COMMIT_SHA"
-        )
-        env_map = {e["name"]: e["value"] for e in container.get("env", [])}
-        assert "GOOGLE_CLOUD_PROJECT" in env_map
-        assert env_map.get("GOOGLE_CLOUD_LOCATION") == "global"
-        assert env_map.get("SANDBOX_DIR") == "/home/sandbox/app"
-        assert (
-            env_map.get("MODEL_PROXY_BASE_URL")
-            == "http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy"
-        )
-        assert env_map.get("JUDGE_MODEL") == ""
-        assert env_map.get("SSL_CERT_FILE") == "/run/ate/trust-bundle.pem"
+    container = tmpl["containers"][0]
+    assert container["image"] == "${AGENT_SANDBOX_IMAGE}"
+    env_map = {e["name"]: e["value"] for e in container.get("env", [])}
+    assert "GOOGLE_CLOUD_PROJECT" in env_map
+    assert env_map.get("GOOGLE_CLOUD_LOCATION") == "global"
+    assert env_map.get("SANDBOX_DIR") == "/home/sandbox/app"
+    assert (
+        env_map.get("MODEL_PROXY_BASE_URL")
+        == "http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy"
+    )
+    assert env_map.get("JUDGE_MODEL") == ""
+    assert env_map.get("SSL_CERT_FILE") == "/run/ate/trust-bundle.pem"
 
-        probe = container["wakeupProbe"]["httpGet"]
-        assert probe["path"] == "/health"
-        assert probe["port"] == 8888
+    probe = container["wakeupProbe"]["httpGet"]
+    assert probe["path"] == "/health"
+    assert probe["port"] == 8888
 
 
 def test_access_policy_manifest_grants_editor_role_to_orchestrator_sa():
@@ -290,15 +281,21 @@ def test_deploy_scripts_provision_gke_standard_gvisor_and_substrate_v1():
 
         # Applies Substrate manifests and waits for Golden Snapshot
         assert "k8s/substrate.yaml" in content
+        assert "awk '/^---$/{exit}'" not in content
+        assert "create atespace" in content
+        assert "AGENT_SANDBOX_DIGEST" in content
+        assert "AGENT_SANDBOX_IMAGE" in content
         assert "k8s/access-policy.yaml" in content
         assert "k8s/actortemplate.yaml" in content
         assert "goldenTag" in content
+        assert 'if [ -z "$GOLDEN_TAG" ]; then' in content
 
 
 def test_destroy_script_cleans_up_substrate_resources():
     content = (REPO_ROOT / "destroy.sh").read_text(encoding="utf-8")
     assert "-ate-snapshots" in content
     assert "ate-snapshot-transfer" in content
+    assert "-stabby" not in content
     assert "GKE Autopilot" not in content
     assert "agent-sandbox" not in content
 

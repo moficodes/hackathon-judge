@@ -222,7 +222,7 @@ fi
 # ------------------------------------------------------------------------------
 log_step "6/7" "Deleting Agent Substrate Snapshot Buckets & Service Account 🪣"
 
-for bkt in "${GOOGLE_CLOUD_PROJECT}-ate-snapshots" "${GOOGLE_CLOUD_PROJECT}-ate-snapshots-assets" "${GOOGLE_CLOUD_PROJECT}-stabby"; do
+for bkt in "${GOOGLE_CLOUD_PROJECT}-ate-snapshots" "${GOOGLE_CLOUD_PROJECT}-ate-snapshots-assets"; do
   log_info "Checking Storage bucket: gs://${bkt}..."
   if gcloud storage buckets describe "gs://${bkt}" &> /dev/null; then
     log_warning "Deleting Storage bucket 'gs://${bkt}' recursively..."

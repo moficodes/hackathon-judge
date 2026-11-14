@@ -99,6 +99,14 @@ else
 fi
 
 export SUBSTRATE_WORKER_IMAGE="${SUBSTRATE_WORKER_IMAGE:-ghcr.io/agent-substrate/substrate/ateworker-gvisor:v1.0.0}"
+if [ -z "${AGENT_SANDBOX_IMAGE:-}" ]; then
+  AGENT_SANDBOX_DIGEST=$(gcloud artifacts docker images describe "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:${COMMIT_SHA}" --format='value(image_summary.digest)' 2>/dev/null || true)
+  if [ -n "$AGENT_SANDBOX_DIGEST" ]; then
+    export AGENT_SANDBOX_IMAGE="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:${COMMIT_SHA}@${AGENT_SANDBOX_DIGEST}"
+  else
+    export AGENT_SANDBOX_IMAGE="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REPO_NAME}/agent-sandbox:${COMMIT_SHA}"
+  fi
+fi
 
 echo -e "${GREEN}✅ Setup complete!${NC}"
 echo -e "\n${BOLD}Active Configuration:${NC}"

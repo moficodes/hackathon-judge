@@ -19,6 +19,7 @@ import shlex
 from .sandbox_utils import (
     DEFAULT_SANDBOX_NAMESPACE,
     DEFAULT_SANDBOX_TEMPLATE,
+    SubstrateActorClient,
     get_sandbox_client,
 )
 
@@ -60,7 +61,11 @@ JUDGE_COMMAND = "uv run python -m app.judge"
 JUDGE_COMMAND_TIMEOUT_SECONDS = 600
 
 
-def evaluate_repository(github_url: str, judging_criteria: str) -> str:
+def evaluate_repository(
+    github_url: str,
+    judging_criteria: str,
+    client: SubstrateActorClient | None = None,
+) -> str:
     """
     Clones a repository into an ephemeral Judge Actor and uses an autonomous agent
     to evaluate it against the provided judging criteria.
@@ -68,6 +73,7 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
     Args:
         github_url: The URL of the GitHub repository to clone.
         judging_criteria: A markdown formatted string containing the judging criteria and rubric.
+        client: Optional SubstrateActorClient instance for dependency injection.
 
     Returns:
         A JSON string containing the evaluation results.
@@ -83,8 +89,8 @@ def evaluate_repository(github_url: str, judging_criteria: str) -> str:
         or f"http://agent.{namespace}.svc.cluster.local:8000/vertex-proxy"
     )
 
-    client = get_sandbox_client()
-    sandbox = client.create_sandbox(
+    resolved_client = client if client is not None else get_sandbox_client()
+    sandbox = resolved_client.create_sandbox(
         template=template,
         namespace=namespace,
     )

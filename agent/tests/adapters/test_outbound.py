@@ -255,3 +255,23 @@ def test_sandbox_prompt_asks_for_repo_relative_paths_and_bounded_commands():
     assert "relative to the repository root" in SANDBOX_PROMPT
     assert "file://" in SANDBOX_PROMPT  # named as forbidden
     assert "3 minutes" in SANDBOX_PROMPT
+
+
+def test_evaluate_repository_uses_injected_client_without_calling_get_sandbox_client():
+    injected_client = MagicMock()
+    mock_sandbox = MagicMock()
+    injected_client.create_sandbox.return_value = mock_sandbox
+    mock_sandbox.commands.run.return_value = MagicMock(exit_code=0)
+    mock_sandbox.files.read.return_value = '{"total_score": 9.9}'
+
+    from src.adapters.outbound.shared_sandbox import evaluate_repository
+    with patch('src.adapters.outbound.shared_sandbox.get_sandbox_client') as mock_get_client:
+        result = evaluate_repository(
+            "https://github.com/test/repo",
+            "# Criteria",
+            client=injected_client,
+        )
+
+    assert result == '{"total_score": 9.9}'
+    mock_get_client.assert_not_called()
+    injected_client.create_sandbox.assert_called_once()

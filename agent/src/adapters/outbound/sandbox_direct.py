@@ -22,11 +22,15 @@ from src.core.models.evaluation import EvaluationOutput
 from src.core.models.message import AgentRequest, AgentResponse, CategoryScore
 from src.core.ports.agent_service import AgentService
 from pydantic import ValidationError
+from .sandbox_utils import SubstrateActorClient
 from .shared_sandbox import evaluate_repository
 
 logger = logging.getLogger(__name__)
 
 class SandboxDirectAdapter(AgentService):
+    def __init__(self, client: SubstrateActorClient | None = None) -> None:
+        self._client = client
+
     async def process_message(self, request: AgentRequest) -> AgentResponse:
         try:
             # Format criteria
@@ -45,7 +49,19 @@ Judging Rubric:
 Scoring Criteria:
 {criteria_text}
 """
-            result_json = await asyncio.to_thread(evaluate_repository, request.github_url, judging_criteria)
+            if self._client is not None:
+                result_json = await asyncio.to_thread(
+                    evaluate_repository,
+                    request.github_url,
+                    judging_criteria,
+                    self._client,
+                )
+            else:
+                result_json = await asyncio.to_thread(
+                    evaluate_repository,
+                    request.github_url,
+                    judging_criteria,
+                )
             
             try:
                 eval_output_dict = json.loads(result_json)

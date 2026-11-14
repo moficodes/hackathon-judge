@@ -160,6 +160,33 @@ def test_execute_async_status_unknown_job_id():
     response = client.get("/execute/status/unknown-job-id-999")
     assert response.status_code == 404
 
+
+def test_execute_async_completed_job_evicted_after_read(setup_sandbox_dir):
+    start_response = client.post(
+        "/execute/start",
+        json={"command": "echo 'cleanup check'"},
+    )
+    assert start_response.status_code == 200
+    job_id = start_response.json()["job_id"]
+
+    status_data = None
+    for _ in range(30):
+        status_response = client.get(f"/execute/status/{job_id}")
+        assert status_response.status_code == 200
+        status_data = status_response.json()
+        if status_data["status"] == "completed":
+            break
+        time.sleep(0.02)
+
+    assert status_data is not None
+    assert status_data["status"] == "completed"
+    assert "cleanup check" in status_data["stdout"]
+
+    # Subsequent GET /execute/status/{job_id} must return 404 once read
+    second_response = client.get(f"/execute/status/{job_id}")
+    assert second_response.status_code == 404
+    assert second_response.json() == {"message": "Job not found"}
+
 def test_upload_and_download_file(setup_sandbox_dir):
     file_content = b"test file content"
     files = {"file": ("test.txt", file_content, "text/plain")}
