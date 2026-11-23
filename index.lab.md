@@ -30,9 +30,9 @@ ephemeral, zero-credential **Judge Actor** restored from a memory-fidelity
 ### What you'll do
 
 - Provision the target Google Cloud services and enable required APIs.
-- Initialize a GKE Standard cluster with nested virtualization and gVisor sandbox nodes, and install **Agent Substrate** (`v1.0.0`) and `kubectl-ate`.
+- Initialize a GKE Standard cluster with nested virtualization (`--enable-nested-virtualization`), and install **Agent Substrate** (`v1.0.0`) and `kubectl-ate`.
 - Configure the Agent Substrate **WorkerPool** (`judge-workerpool`), **AccessPolicy**, and **ActorTemplate** (`judge-sandbox`) to create a pre-initialized **Golden Snapshot**.
-- Deploy the REST Backend API, the ADK **Judge Orchestrator** (`agent`) with its internal **Model Proxy**, and the React Frontend UI.
+- Deploy the REST Backend API, the Python **Judge Orchestrator** (`agent`) with its internal **Model Proxy**, and the React Frontend UI.
 - Wire external load-balanced routing and watch ephemeral **Judge Actors** and per-actor **EgressPolicy** rules run autonomous **Antigravity SDK** evaluations through `atenet-router`.
 
 ### What you'll need
@@ -116,7 +116,7 @@ gcloud services enable \
 ```
 
 > **Why we enable these APIs:**
-> Google Cloud services are disabled by default to prevent unauthorized access and charges. We enable these specific APIs to activate container orchestration (GKE), secure container storage (Artifact Registry), serverless build packaging (Cloud Build), reliable messaging queues (Pub/Sub), AI model services (**Gemini Enterprise Agent Platform**), project configuration (Cloud Resource Manager & IAM), serverless data analytics (BigQuery), database-level AI bindings (BigQuery Connection), and Golden Snapshot object storage (Cloud Storage).
+> Google Cloud services are disabled by default to prevent unauthorized access and charges. We enable these specific APIs to activate container orchestration (GKE), secure container storage (Artifact Registry), serverless build packaging (Cloud Build), reliable messaging queues (Pub/Sub), AI model services (**Gemini platform**), project configuration (Cloud Resource Manager & IAM), serverless data analytics (BigQuery), database-level AI bindings (BigQuery Connection), and Golden Snapshot object storage (Cloud Storage).
 
 ## Set up Infrastructure
 Duration: 15:00
@@ -159,7 +159,7 @@ The script verifies that `gcloud`, `bq`, `kubectl`, and `envsubst` utilities are
 > Setting the active target project prevents CLI commands from affecting other projects in your account and performs pre-flight authentication checks, ensuring that setup commands do not fail mid-deployment due to invalid credentials.
 
 #### 3. Enabling Target Google Cloud APIs
-The script performs an idempotent check to verify and enable the target Google Cloud service APIs (GKE, Artifact Registry, Cloud Build, Pub/Sub, **Gemini Enterprise Agent Platform**, BigQuery, Cloud Storage, and IAM).
+The script performs an idempotent check to verify and enable the target Google Cloud service APIs (GKE, Artifact Registry, Cloud Build, Pub/Sub, **Gemini platform**, BigQuery, Cloud Storage, and IAM).
 > **Why we enable Google Cloud APIs:**
 > Managed cloud services must be activated before their endpoints are reachable or resources can be created. Enabling them at the start prepares the regional Google Cloud API gateway to handle subsequent resource provisioning commands.
 
@@ -168,10 +168,10 @@ The script provisions a Docker container repository named `hackathon-judge-repo`
 > **Why we create an Artifact Registry repository:**
 > GKE clusters require secure access to private container registries in the same regional network to pull application images quickly. Artifact Registry provides a secure, private host to catalog, scan, and store Docker container images.
 
-#### 5. Provisioning the GKE Standard Cluster with gVisor
-The script provisions a Google Kubernetes Engine (GKE) Standard cluster named `hackathon-judge-cluster` on the `rapid` release channel (`1.37`) using `c3-standard-4` nodes configured with `--enable-nested-virtualization`, `--sandbox="type=gvisor"`, `--gateway-api=standard`, and Workload Identity (`[PROJECT_ID].svc.id.goog`).
-> **Why we deploy a GKE Standard cluster with nested virtualization and gVisor:**
-> Agent Substrate hosts isolated gVisor actor sandboxes inside long-running `ateworker-gvisor` worker pods managed by a `WorkerPool` and node-level `atelet` DaemonSet. Provisioning `c3-standard-4` nodes with nested virtualization and gVisor enabled provides hardware-backed syscall isolation and sub-second memory snapshot restoration.
+#### 5. Provisioning the GKE Standard Cluster with Nested Virtualization
+The script provisions a Google Kubernetes Engine (GKE) Standard cluster named `hackathon-judge-cluster` on the `rapid` release channel (`1.37`) using `c3-standard-4` nodes configured with `--enable-nested-virtualization`, `--gateway-api=standard`, and Workload Identity (`[PROJECT_ID].svc.id.goog`).
+> **Why we deploy a GKE Standard cluster with nested virtualization:**
+> Agent Substrate hosts isolated gVisor actor sandboxes inside long-running `ateworker-gvisor` worker pods managed by a `WorkerPool` and node-level `atelet` DaemonSet. Provisioning `c3-standard-4` nodes with `--enable-nested-virtualization` lets Agent Substrate's `ateworker-gvisor` and `atelet` runtime deliver user-space syscall isolation and sub-second memory snapshot restoration.
 
 #### 6. Configuring Pub/Sub Topics and Subscriptions
 The script provisions the message topics (`judging-tasks` and `judging-results`) along with their corresponding worker (`judging-tasks-agent-sub`) and API (`judging-results-backend-sub`) subscriptions.
@@ -184,10 +184,10 @@ The script creates the `hackathon_judge` dataset, applies structural SQL databas
 > BigQuery stores the hackathon rubrics, project submissions, and structured evaluation scorecards, pre-populating the platform with sample hackathon submissions ready for immediate grading.
 
 #### 8. Triggering Container Builds using Cloud Build
-The script triggers the `cloudbuild.yaml` definition to compile the React UI (`frontend`), Go REST server (`backend`), Python ADK **Judge Orchestrator** (`agent`, bundled with `kubectl-ate` `v1.0.0`), and FastAPI + **Antigravity SDK** sandbox runtime (`agent-sandbox`), packaging them into container images tagged with the active repository Git commit SHA and pushing them to Artifact Registry.
+The script triggers the `cloudbuild.yaml` definition to compile the React UI (`frontend`), Go REST server (`backend`), Python **Judge Orchestrator** (`agent`, bundled with `kubectl-ate` `v1.0.0`), and FastAPI + **Antigravity SDK** sandbox runtime (`agent-sandbox`), packaging them into container images tagged with the active repository Git commit SHA and pushing them to Artifact Registry.
 
 #### 9. Provisioning Cloud Storage Snapshot Buckets & Installing Agent Substrate (`v1.0.0`)
-The script creates the Cloud Storage snapshot buckets (`[PROJECT_ID]-ate-snapshots` and `[PROJECT_ID]-ate-snapshots-assets`) and the `ate-snapshot-transfer` IAM service account, binds storage and token-creator permissions for `ate-snapshot-controller` and `ate-api-server`, builds `kubectl-ate` (`v1.0.0`), and runs `ate-setup deploy ate-system`. It configures `--sandbox-classes="gvisor"`, `--credential-provider='{"enabled":false}'`, and `--ingress-allowed-spiffe-ids` so `hackathon-judge-sa` can route mTLS traffic through `atenet-router`.
+The script creates the Cloud Storage snapshot buckets (`[PROJECT_ID]-ate-snapshots` and `[PROJECT_ID]-ate-snapshots-assets`) and the `ate-snapshot-transfer` IAM service account, binds storage and token-creator permissions for `ate-snapshot-controller` and `ate-api-server`, builds `kubectl-ate` (`v1.0.0`) into `~/.local/bin`, resolves the digest-pinned `ateworker-gvisor` worker image into `.env`, and runs `ate-setup deploy ate-system`. It configures `--sandbox-classes="gvisor"`, `--credential-provider='{"enabled":false}'`, and `--ingress-allowed-spiffe-ids` so `hackathon-judge-sa` can route mTLS traffic through `atenet-router`.
 > **Why we install the Agent Substrate control plane and snapshot storage:**
 > Standard Kubernetes clusters cannot checkpoint or restore running container memory states in sub-second times. Agent Substrate extends GKE with `ate-api-server`, `atenet-router`, `atenet-egress`, `ate-snapshot-controller`, and the `atelet` DaemonSet to orchestrate memory-snapshotted gVisor actors backed by Cloud Storage.
 
@@ -196,21 +196,16 @@ The script applies `k8s/namespace.yaml` (labeling `hackathon-judge` with `ate.de
 > **Why Judge Actors receive zero Google Cloud credentials:**
 > Only the trusted Judge Orchestrator (`hackathon-judge-sa`) receives Workload Identity IAM bindings. Judge Actors run without a Kubernetes Service Account or metadata server access, ensuring untrusted participant code can never exfiltrate cloud tokens.
 
-#### 11. Deploying WorkerPool, AccessPolicy, and ActorTemplate Golden Snapshot
-The script applies the `WorkerPool` (`k8s/substrate.yaml`), creates the `hackathon-judge` atespace, applies `k8s/access-policy.yaml`, registers the `judge-sandbox` `ActorTemplate` (`k8s/actortemplate.yaml`), and waits until the `WorkerPool` pods are `Ready` and the `ActorTemplate` reports a completed **Golden Snapshot** (`snapshotTime`).
-> **Why we verify the Golden Snapshot during setup:**
-> Waiting for `status.goldenSnapshotStatus.snapshotTime` confirms that Agent Substrate has booted the builder container, verified its `/health` wakeup probe on port `80`, and uploaded its memory checkpoint to Cloud Storage so every subsequent evaluation starts immediately.
-
 ---
 
 ## Configure Agent Substrate WorkerPool, AccessPolicy, and ActorTemplate
 Duration: 05:00
 
-In this step, you will inspect and apply the Agent Substrate **WorkerPool**, **AccessPolicy**, and **ActorTemplate** (**Golden Snapshot**) configurations that power sub-second, zero-credential code evaluations.
+In this step, you will configure the Agent Substrate **WorkerPool**, **AccessPolicy**, and **ActorTemplate** (**Golden Snapshot**) resources that power sub-second, zero-credential code evaluations.
 
 ### Source Environment Variables
 
-Before applying templates that require environment variables, source the `setup-env.sh` script to parse and export all necessary variables (including `SUBSTRATE_WORKER_IMAGE` and the digest-pinned `AGENT_SANDBOX_IMAGE`) to your shell:
+Before applying templates that require environment variables, source the `setup-env.sh` script to add `~/.local/bin` (`kubectl-ate`) to your `PATH` and export all necessary variables (including the digest-pinned `SUBSTRATE_WORKER_IMAGE` and `AGENT_SANDBOX_IMAGE`) to your shell:
 
 ```bash
 source ./setup-env.sh
@@ -280,7 +275,7 @@ envsubst < k8s/backend.yaml | kubectl apply -f -
 
 ### Deploy Agent
 
-Deploy the ADK Judge Orchestrator (`agent`) and its internal cluster `Service`:
+Deploy the Python **Judge Orchestrator** (`agent`) and its internal cluster `Service`:
 
 ```bash
 source ./setup-env.sh
@@ -382,7 +377,7 @@ judge-b1d9d23b   hackathon-judge/judge-sandbox   ACTOR_STATE_RUNNING
 > **Ephemeral Golden Snapshot Restore & Automatic Teardown by Design:**
 > When the Judge Orchestrator pulls a task from Pub/Sub, it calls `kubectl-ate create actor` and `kubectl-ate create egress-policy` to restore a fresh `judge-[8-hex]` actor from the `judge-sandbox` Golden Snapshot in ~1–2 seconds. The moment the evaluation completes (or if an error occurs), the orchestrator's `finally` block deletes both the `EgressPolicy` and the Judge Actor so no files, processes, or network rules ever persist between submissions.
 
-Check the logs of the Judge Orchestrator pod to witness the step-by-step ADK orchestration, asynchronous command polling, and zero-credential Model Proxy requests:
+Check the logs of the Judge Orchestrator pod to witness Pub/Sub task pickup, asynchronous command polling over `atenet-router`, zero-credential Model Proxy requests, and Judge Actor teardown:
 
 ```bash
 kubectl logs -l app=agent -n hackathon-judge
@@ -391,16 +386,19 @@ kubectl logs -l app=agent -n hackathon-judge
 You should see log output similar to the following:
 
 ```console
-INFO:     10.24.1.15:48210 - "GET /health HTTP/1.1" 200 OK
-INFO:     10.24.1.15:48214 - "POST /execute/start HTTP/1.1" 200 OK
-INFO:     10.24.1.15:48220 - "GET /execute/status/9f4c2a18e7b04d12a6c3e5f701234567 HTTP/1.1" 200 OK
+INFO:src.adapters.inbound.pubsub_subscriber:Received message: 14829104582910432
+INFO:src.adapters.inbound.pubsub_subscriber:Processing message 14829104582910432
+INFO:httpx:HTTP Request: GET https://atenet-router.ate-system.svc:443/health "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://atenet-router.ate-system.svc:443/execute/start "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET https://atenet-router.ate-system.svc:443/execute/status/9f4c2a18e7b04d12a6c3e5f701234567 "HTTP/1.1 200 OK"
 INFO:     10.24.2.8:51342 - "POST /vertex-proxy/v1beta1/projects/my-project/locations/global/publishers/google/models/gemini-3.8-flash:streamGenerateContent?alt=sse HTTP/1.1" 200 OK
-INFO:     10.24.1.15:48390 - "GET /download/evaluation.json HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: GET https://atenet-router.ate-system.svc:443/download/evaluation.json "HTTP/1.1 200 OK"
 INFO:src.adapters.outbound.shared_sandbox:Terminating Judge Actor...
+INFO:src.adapters.inbound.pubsub_subscriber:Successfully processed and acked message 14829104582910432
 ```
 
 > **Why we inspect Agent logs:**
-> Inspecting the Judge Orchestrator logs displays the complete lifecycle of an evaluation in real time: verifying Judge Actor health (`GET /health`), starting non-blocking repository clone and `uv run python -m app.judge` jobs (`POST /execute/start`), polling job status (`GET /execute/status/{job_id}`), proxying streaming **Gemini on Agent Platform** model calls (`POST /vertex-proxy/...`), downloading `evaluation.json`, and terminating the Judge Actor.
+> Inspecting the Judge Orchestrator logs displays both sides of the evaluation lifecycle in real time: outbound `httpx` calls through `atenet-router` to verify Judge Actor readiness (`/health`), start and poll non-blocking repository clone and `uv run python -m app.judge` jobs (`/execute/start`, `/execute/status/{job_id}`), and download `evaluation.json`, alongside inbound uvicorn requests served by the orchestrator's internal Model Proxy (`POST /vertex-proxy/...`) forwarding streaming **Gemini platform** calls before terminating the Judge Actor.
 
 ---
 
@@ -417,14 +415,14 @@ Running raw user code poses severe security risks, including host compromise, co
 
 The diagram below maps how the components of our event-driven system communicate during a secure, sandboxed judging execution:
 
-<img src="images/hackathon-judge-mermaid.png" />
+![Hackathon Judge Agent Substrate and Antigravity SDK architecture diagram](images/agent-substrate-hackathon-judge-flow.png)
 
 #### How the Engaged Tools and Components Work Together
 
 * **React Frontend UI**: Exposes an interactive interface where users configure rubric criteria, register teams, submit project repository URLs, and review finalized grading scorecards, including file-level discrepancies and engineering critiques.
 * **Go REST Backend API**: Manages global API endpoints, stores project configurations and scorecards in BigQuery, and publishes judging tasks to Pub/Sub to decouple heavy evaluation pipelines.
 * **Google Pub/Sub**: The message broker (`judging-tasks` and `judging-results`) that buffers task and result messages asynchronously between the Go Backend API and the Judge Orchestrator.
-* **Python ADK Judge Orchestrator & Model Proxy (`agent`)**: A background worker that pulls tasks from Pub/Sub and runs a **Google Agent Development Kit (ADK)** coordinator agent. It invokes `evaluate_repository` (`SubstrateActorClient`) to manage ephemeral Judge Actors via `kubectl-ate` and hosts the internal `/vertex-proxy` FastAPI route (`model_proxy.py`).
+* **Python Judge Orchestrator & Model Proxy (`agent`)**: A FastAPI background worker that pulls tasks from Pub/Sub and runs `SandboxDirectAdapter` by default (`AGENT_TYPE=sandbox_direct`, with an optional Google ADK coordinator adapter available via `AGENT_TYPE=adk`). It invokes `evaluate_repository` (`SubstrateActorClient`) to manage ephemeral Judge Actors via `kubectl-ate` and hosts the internal `/vertex-proxy` FastAPI route (`model_proxy.py`).
 * **Agent Substrate `WorkerPool` (`judge-workerpool`)**: Maintains warm `ateworker-gvisor` pods on GKE Standard nodes with nested virtualization and gVisor (`runsc`) isolation, intercepting container system calls in user space to protect the host kernel.
 * **`ActorTemplate` (`judge-sandbox`) & Golden Snapshot (`SNAPSHOT_FIDELITY_MEMORY`)**: Pre-initializes the `agent-sandbox` container image once, waits for `/health` on port `80`, and checkpoints the running memory and filesystem state to Cloud Storage so ephemeral `judge-[8-hex]` actors restore in ~1–2 seconds.
 * **`atenet-router` & Asynchronous Command Polling**: Routes mTLS requests from the Judge Orchestrator to the target Judge Actor using `X-Ate-Target-Atespace`, `X-Ate-Target-Actor`, and `X-Ate-Target-Port: 80` headers. Because repository builds and multi-turn LLM grading can run for several minutes, the orchestrator starts commands asynchronously via `POST /execute/start` and polls `GET /execute/status/{job_id}` every 2 seconds so no single HTTP request ever hits an idle proxy timeout.
@@ -438,7 +436,7 @@ The diagram below maps how the components of our event-driven system communicate
 
 > aside positive
 > **Zero-Credential Model Proxy security in action:**
-> Unlike traditional sandboxes that mount a cloud service account inside the untrusted pod, Judge Actors hold **zero Google Cloud credentials**. When the Antigravity SDK inside the Judge Actor calls `gemini-3.8-flash`, it sends an unauthenticated request to `http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy`. The Judge Orchestrator verifies that the upstream path matches `^v1(beta1)?/projects/.../locations/.../publishers/google/models/...:(generateContent|streamGenerateContent)$` (rejecting any other path with `403 Forbidden`), attaches its own Workload Identity access token (`hackathon-judge-sa`), and streams the **Gemini on Agent Platform** response back into the actor. Even if untrusted code completely compromises the sandbox user space, there are no cloud credentials to steal!
+> Unlike traditional sandboxes that mount a cloud service account inside the untrusted pod, Judge Actors hold **zero Google Cloud credentials**. When the Antigravity SDK inside the Judge Actor calls `gemini-3.8-flash`, it sends an unauthenticated request to `http://agent.hackathon-judge.svc.cluster.local:8000/vertex-proxy`. The Judge Orchestrator verifies that the upstream path matches `^v1(beta1)?/projects/.../locations/.../publishers/google/models/...:(generateContent|streamGenerateContent)$` (rejecting any other path with `403 Forbidden`), attaches its own Workload Identity access token (`hackathon-judge-sa`), and streams the **Gemini platform** response back into the actor. Even if untrusted code completely compromises the sandbox user space, there are no cloud credentials to steal!
 
 ---
 
@@ -465,16 +463,16 @@ You have implemented a secure, event-driven AI evaluation platform capable of cl
 
 ### What you've learned
 
-- **GKE & Agent Substrate Infrastructure**: How to provision a GKE Standard cluster with nested virtualization and gVisor nodes, and deploy Agent Substrate (`v1.0.0`) with Cloud Storage snapshot buckets.
+- **GKE & Agent Substrate Infrastructure**: How to provision a GKE Standard cluster with nested virtualization (`--enable-nested-virtualization`), and deploy Agent Substrate (`v1.0.0`) with Cloud Storage snapshot buckets.
 - **WorkerPools & Golden Snapshots**: How to configure a `WorkerPool` (`judge-workerpool`), `AccessPolicy`, and `ActorTemplate` (`judge-sandbox` with `SNAPSHOT_FIDELITY_MEMORY`) for sub-second Judge Actor restoration and automatic teardown.
-- **Zero-Credential Sandboxing & Model Proxy**: How to isolate untrusted code with zero Google Cloud credentials, restrict outbound traffic with per-actor `EgressPolicy` rules, and proxy strictly validated model requests through the Judge Orchestrator to **Gemini on Agent Platform**.
+- **Zero-Credential Sandboxing & Model Proxy**: How to isolate untrusted code with zero Google Cloud credentials, restrict outbound traffic with per-actor `EgressPolicy` rules, and proxy strictly validated model requests through the Judge Orchestrator to **Gemini platform**.
 - **Antigravity SDK Code Evaluation**: How to run an autonomous `google-antigravity` judging agent over `atenet-router` mTLS using asynchronous `/execute/start` and `/execute/status/{job_id}` polling to produce structured Pydantic scorecards.
 
 ### Next steps
 
-- Check out the [Gemini Enterprise Agent Platform Documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).
+- Check out the [Gemini platform documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform).
+- Explore [Agent Substrate on GitHub](https://github.com/agent-substrate/substrate).
 - Learn more about [GKE Sandbox and gVisor overview](https://cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods).
-- Explore the [Google Agent Development Kit (ADK) Documentation](https://google.github.io/adk-docs/).
 
 ### Reference docs
 

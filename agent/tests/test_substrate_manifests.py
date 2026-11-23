@@ -265,13 +265,15 @@ def test_deploy_scripts_provision_gke_standard_gvisor_and_substrate_v1():
         assert "--enable-nested-virtualization" in content
         assert "--gateway-api=standard" in content
         assert '--workload-pool="${GOOGLE_CLOUD_PROJECT}.svc.id.goog"' in content
+        assert "--sandbox=" not in content
         assert "clusters create-auto" not in content
 
-        # Agent Substrate v1.0.0 installation & SPIFFE allowlist
+        # Agent Substrate v1.0.0 installation, digest persistence & SPIFFE allowlist
         assert 'SUBSTRATE_VERSION="v1.0.0"' in content
         assert "kubectl-ate" in content
         assert "spiffe://cluster.local/ns/hackathon-judge/sa/hackathon-judge-sa" in content
         assert "ate-snapshot-transfer" in content
+        assert "SUBSTRATE_WORKER_IMAGE=" in content
 
         # Zero-credential Judge Actors (no sandbox SA IAM binding) and no legacy agent-sandbox
         assert "hackathon-judge-sandbox-sa" not in content
@@ -281,16 +283,32 @@ def test_deploy_scripts_provision_gke_standard_gvisor_and_substrate_v1():
         assert "sandbox-claim-template.yaml" not in content
         assert "sandbox-warmpool.yaml" not in content
 
-        # Applies Substrate manifests and waits for Golden Snapshot
-        assert "k8s/substrate.yaml" in content
-        assert "awk '/^---$/{exit}'" not in content
-        assert "create atespace" in content
-        assert "AGENT_SANDBOX_DIGEST" in content
-        assert "AGENT_SANDBOX_IMAGE" in content
-        assert "k8s/access-policy.yaml" in content
-        assert "k8s/actortemplate.yaml" in content
-        assert "goldenTag" in content
-        assert 'if [ -z "$GOLDEN_TAG" ]; then' in content
+    # deploy.sh leaves WorkerPool / AccessPolicy / ActorTemplate for the hands-on codelab steps
+    deploy_sh = (REPO_ROOT / "deploy.sh").read_text(encoding="utf-8")
+    assert "k8s/substrate.yaml" not in deploy_sh
+    assert "create atespace" not in deploy_sh
+    assert "k8s/access-policy.yaml" not in deploy_sh
+    assert "k8s/actortemplate.yaml" not in deploy_sh
+
+    # deploy-all.sh applies Substrate manifests and waits for Golden Snapshot end-to-end
+    deploy_all_sh = (REPO_ROOT / "deploy-all.sh").read_text(encoding="utf-8")
+    assert "k8s/substrate.yaml" in deploy_all_sh
+    assert "awk '/^---$/{exit}'" not in deploy_all_sh
+    assert "create atespace" in deploy_all_sh
+    assert "AGENT_SANDBOX_DIGEST" in deploy_all_sh
+    assert "AGENT_SANDBOX_IMAGE" in deploy_all_sh
+    assert "k8s/access-policy.yaml" in deploy_all_sh
+    assert "k8s/actortemplate.yaml" in deploy_all_sh
+    assert "goldenTag" in deploy_all_sh
+    assert 'if [ -z "$GOLDEN_TAG" ]; then' in deploy_all_sh
+
+
+def test_setup_env_exports_local_bin_path_and_digest_pinned_worker_image():
+    content = (REPO_ROOT / "setup-env.sh").read_text(encoding="utf-8")
+    assert 'export PATH="${HOME}/.local/bin:${PATH}"' in content
+    assert (
+        "ghcr.io/agent-substrate/substrate/ateworker-gvisor:v1.0.0@sha256:" in content
+    )
 
 
 def test_destroy_script_cleans_up_substrate_resources():
@@ -303,7 +321,10 @@ def test_destroy_script_cleans_up_substrate_resources():
 
 
 def test_documentation_describes_agent_substrate_and_excludes_legacy_sandbox_crds():
-    for doc_rel in ("README.md", "k8s/README.md", "index.lab.md"):
+    doc_rels = ["README.md", "k8s/README.md"]
+    if (REPO_ROOT / "index.lab.md").exists():
+        doc_rels.append("index.lab.md")
+    for doc_rel in doc_rels:
         content = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
         assert "Agent Substrate" in content, f"{doc_rel} must describe Agent Substrate"
         assert "WorkerPool" in content, f"{doc_rel} must describe WorkerPool"
@@ -324,13 +345,12 @@ def test_documentation_describes_agent_substrate_and_excludes_legacy_sandbox_crd
         "sandbox-networkpolicy.yaml",
         "hackathon-judge-sandbox-sa",
     )
-    for doc_rel in (
-        "README.md",
-        "k8s/README.md",
-        "index.lab.md",
+    all_doc_rels = [
+        *doc_rels,
         "agent/README.md",
         "agent-sandbox/README.md",
-    ):
+    ]
+    for doc_rel in all_doc_rels:
         content = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
         for term in forbidden_legacy_terms:
             assert term not in content, f"{doc_rel} still contains deprecated term {term!r}"
@@ -345,7 +365,6 @@ def test_no_retired_branding_or_hardcoded_personal_identifiers_in_docs_and_manif
     target_files = [
         REPO_ROOT / "README.md",
         REPO_ROOT / "k8s" / "README.md",
-        REPO_ROOT / "index.lab.md",
         REPO_ROOT / "agent" / "README.md",
         REPO_ROOT / "agent-sandbox" / "README.md",
         REPO_ROOT / "deploy.sh",
@@ -355,10 +374,16 @@ def test_no_retired_branding_or_hardcoded_personal_identifiers_in_docs_and_manif
         REPO_ROOT / ".env.example",
         *sorted(K8S_DIR.glob("*.yaml")),
     ]
+    if (REPO_ROOT / "index.lab.md").exists():
+        target_files.append(REPO_ROOT / "index.lab.md")
     for path in target_files:
         content = path.read_text(encoding="utf-8")
         lower = content.lower()
         assert "vertex ai" not in lower, f"{path.relative_to(REPO_ROOT)} contains retired branding 'Vertex AI'"
+        assert "gemini enterprise agent platform" not in lower, f"{path.relative_to(REPO_ROOT)} contains retired branding 'Gemini Enterprise Agent Platform'"
+        assert "gemini on agent platform" not in lower, f"{path.relative_to(REPO_ROOT)} contains retired branding 'Gemini on Agent Platform'"
+        assert "gemini agent platform" not in lower, f"{path.relative_to(REPO_ROOT)} contains retired branding 'Gemini Agent Platform'"
+        assert '--sandbox="type=gvisor"' not in content, f"{path.relative_to(REPO_ROOT)} references unused --sandbox=\"type=gvisor\" flag"
         assert "mofilabs" not in lower, f"{path.relative_to(REPO_ROOT)} contains personal project identifier 'mofilabs'"
         assert "ate-cluster" not in lower, f"{path.relative_to(REPO_ROOT)} contains personal cluster identifier 'ate-cluster'"
 
